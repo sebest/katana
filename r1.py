@@ -11,65 +11,70 @@ hws.set_cluster('filer-02', ['10.201.13.%d' % i for i in range(1, 7)], {'Host': 
 hws.set_cluster('filer-01.dev', ['10.195.10.%d' % i for i in range(1, 7)], {'Host': 'filer-01.dev.int.dmcloud.net'})
 
 import os
+import errno
 import urllib2
-
-from contextlib import contextmanager
 import fcntl
-
-@contextmanager
-def lock(filename):
-    lockfilename = filename + '.lock'
-    lockfile = open(lockfilename, 'w')
-    print lockfile.fileno()
-    print '%d waiting for lock' % os.getpid()
-    fcntl.flock(lockfile, fcntl.LOCK_EX)
-    print '%d lock acquired' % os.getpid()
-    yield
-    #try:
-    #    os.remove(lockfilename)
-    #    print '%d file deleted' % os.getpid()
-    #except OSError:
-    #    print '%d lock not found' % os.getpid()
-    fcntl.flock(lockfile, fcntl.LOCK_UN)
-    print '%d lock released' % os.getpid()
 
 def hash_id(user_id, media_id):
     return '%s/%s/%s/%s/%s/%s' % (user_id[7], user_id[6], user_id, media_id[7], media_id[6], media_id)
 
 def get_thumb_src(user_id, media_id):
     hash_path = hash_id(user_id, media_id)
-    thumb_src_file = '%s/%s/source.jpeg' % (THUMB_DATA, hash_path)
+    thumb_src_file_dir = '%s/%s' % (THUMB_DATA, hash_path)
+    thumb_src_file = '%s/source.jpeg' % (thumb_src_file_dir)
 
-    if not os.path.exists(thumb_src_file):
-        thumb_src_file_dir = os.path.dirname(thumb_src_file)
-        if not os.path.exists(thumb_src_file_dir):
-            try:
-                os.makedirs(thumb_src_file_dir)
-            except OSError:
-                pass
+    try:
+        os.makedirs(thumb_src_file_dir)
+    except OSError, e:
+        if e.errno not in (errno.EEXIST, errno.ENOENT):
+            raise
 
-        with lock(thumb_src_file):
-            filename = '/%s/%s.jpeg' % (hash_path, 'jpeg_thumbnail_source')
-            info = hws.resolve(filename)
-            if not info:
-                return None
-            url = info[1]
-            headers = {'User-Agent': 'DcRecizer'}
-            if info[2]:
-                headers['Host'] = info[2]
-            try:
-                req = urllib2.Request(url, headers=headers)
-                req = urllib2.urlopen(req)
-            except Exception, e:
-                return None
-            with open(thumb_src_file, 'wb') as f:
-                while True:
-                    chunk = req.read(THUMB_CHUNK)
-                    if not chunk:
-                        break
-                    f.write(chunk)
+    try:
+        with open(thumb_src_file, 'r') as thumb_src_fd:
+            fcntl.flock(thumb_src_fd, fcntl.LOCK_SH)
+    except IOError, e:
+        if e.errno == errno.ENOENT:
+            with open(thumb_src_file, 'wb') as thumb_src_fdw:
+                try:
+                    fcntl.flock(thumb_src_fdw, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except IOError, e:
+                    if e.errno == errno.EAGAIN:
+                        with open(thumb_src_file, 'r') as thumb_src_fd:
+                            fcntl.flock(thumb_src_fd, fcntl.LOCK_SH)
+                    else:
+                        raise
+                else:
+                    filename = '/%s/%s.jpeg' % (hash_path, 'jpeg_thumbnail_source')
+                    info = hws.resolve(filename)
+                    if info:
+                        url = info[1]
+                        headers = {'User-Agent': 'DcRecizer'}
+                        if info[2]:
+                            headers['Host'] = info[2]
+                        try:
+                            req = urllib2.Request(url, headers=headers)
+                            req = urllib2.urlopen(req)
+                        except Exception, e:
+                            # TODO improve error logging
+                            os.unlink(thumb_src_file)
+                        else:
+                            while True:
+                                chunk = req.read(THUMB_CHUNK)
+                                if not chunk:
+                                    break
+                                thumb_src_fdw.write(chunk)
+                    else:
+                        os.unlink(thumb_src_file)
+        else:
+            raise
 
-    return thumb_src_file
+    try:
+        if os.path.exists(thumb_src_file) and os.path.getsize(thumb_src_file):
+            return thumb_src_file
+    except OSError, e:
+        if e.errno != errno.ENOENT:
+            raise
+    return None
 
 import PIL
 from PIL import Image, ImageOps
@@ -94,9 +99,20 @@ def get_thumb_resized(user_id, media_id, width, height, accel_redirect=False):
     thumb_resized_file_rel = '%s/%dx%d.jpeg' % (hash_path, width, height)
     thumb_resized_file = '%s/%s' % (THUMB_DATA, thumb_resized_file_rel)
 
-    if not os.path.exists(thumb_resized_file):
-        with lock(thumb_resized_file):
-            resize_pil(thumb_src_file, thumb_resized_file, width, height)
+    try:
+        with open(thumb_resized_file, 'r') as lock:
+            fcntl.flock(lock, fcntl.LOCK_SH)
+    except IOError, e:
+        if e.errno == errno.ENOENT:
+            with open(thumb_resized_file, 'w') as lockw:
+                try:
+                    fcntl.flock(lockw, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except IOError, e:
+                    if e.errno == errno.EAGAIN:
+                        with open(thumb_resized_file, 'r') as lock:
+                            fcntl.flock(lock, fcntl.LOCK_SH)
+                else:
+                    resize_pil(thumb_src_file, thumb_resized_file, width, height)
 
     if accel_redirect:
         return '%s/%s' % (THUMB_ACCEL_REDIRECT, thumb_resized_file_rel)
@@ -125,7 +141,7 @@ def app(environ, start_response):
     thumb_resized = get_thumb_resized(user_id, media_id, width, height, accel_redirect=True)
     if not thumb_resized:
         timing = '%.3f ms' % (time() - start)
-        print timing
+        #print timing
         start_response('404 Not Found', [('X-Response-Time', timing)])
         return ''
 
