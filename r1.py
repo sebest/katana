@@ -14,35 +14,50 @@ import os
 import errno
 import urllib2
 import fcntl
+import gevent
 from contextlib import contextmanager
 
 @contextmanager
 def wlock(filename):
-    def rlock(filename):
-        with open(filename, 'r') as lock:
-            fcntl.flock(lock, fcntl.LOCK_SH)
-            yield
-
     try:
-        rlock(filename)
-    except IOError, e:
-        if e.errno == errno.ENOENT:
-            with open(filename, 'w') as lockw:
+        with open(filename, 'r') as lock:
+            while True:
                 try:
-                    fcntl.flock(lockw, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
                 except IOError, e:
                     if e.errno == errno.EAGAIN:
-                        rlock(filename)
+                        gevent.sleep(0.05)
+                        continue
                     else:
                         raise
                 else:
-                    yield lockw
-                    if not lockw.closed:
-                        lockw.seek(0, 2)
-                        if not lockw.tell():
-                            os.unlink(filename)
-                    elif not os.path.getsize(filename):
-                        os.unlink(filename)
+                    yield
+                    break
+    except IOError, e:
+        if e.errno == errno.ENOENT:
+            with open(filename, 'wb') as lockw:
+                while True:
+                    try:
+                        fcntl.flock(lockw, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except IOError, e:
+                        if e.errno == errno.EAGAIN:
+                            gevent.sleep(0.05)
+                            continue
+                        else:
+                            raise
+                    else:
+                        yield lockw
+
+                        if os.path.exists(filename):
+                            if not lockw.closed:
+                                lockw.seek(0, 2)
+                                if not lockw.tell():
+                                    os.unlink(filename)
+                            elif not os.path.getsize(filename):
+                                os.unlink(filename)
+                        break
+        else:
+            raise
 
 
 def hash_id(user_id, media_id):
@@ -81,15 +96,13 @@ def get_thumb_src(user_id, media_id):
                             break
                         thumb_src_fdw.write(chunk)
 
-    try:
-        if os.path.exists(thumb_src_file):
+                    return thumb_src_file
+        elif os.path.exists(thumb_src_file):
             if os.path.getsize(thumb_src_file):
                 return thumb_src_file
             else:
                 os.unlink(thumb_src_file)
-    except OSError, e:
-        if e.errno != errno.ENOENT:
-            raise
+
     return None
 
 import PIL
@@ -128,8 +141,16 @@ from time import time
 
 PATH_RE = re.compile('^/(?P<user_id>[0-9a-f]{24})/(?P<media_id>[0-9a-f]{24})/thumb-(?P<width>\d{1,4})x(?P<height>\d{1,4}).jpeg')
 
+class Timer:
+    def __init__(self):
+        self.start = time()
+
+    def __str__(self):
+        return '%.3f ms' % (time() - self.start)
+
 def app(environ, start_response):
-    start = time()
+    timer = Timer()
+
     if environ['REQUEST_METHOD'] not in ('GET', 'HEAD'):
         start_response('405 Invalid Method', [])
         return ''
@@ -145,15 +166,11 @@ def app(environ, start_response):
     height = int(match.group('height'))
     thumb_resized = get_thumb_resized(user_id, media_id, width, height, accel_redirect=True)
     if not thumb_resized:
-        timing = '%.3f ms' % (time() - start)
-        #print timing
-        start_response('404 Not Found', [('X-Response-Time', timing)])
+        start_response('404 Not Found', [('X-Response-Time', str(timer))])
         return ''
 
-    timing = '%.3f ms' % (time() - start)
-    print timing
     start_response('200 OK', [
-        ('X-Response-Time', timing),
+        ('X-Response-Time', str(timer)),
         ('Content-Type', 'image/jpeg'),
         ('X-Accel-Redirect', thumb_resized),
     ])
