@@ -3,7 +3,6 @@ import gevent
 from gevent import monkey; monkey.patch_all()
 
 from gevent.event import AsyncResult
-from gevent.queue import Queue
 from gevent.timeout import Timeout
 
 from random import sample
@@ -37,6 +36,7 @@ class HttpWhoHas(object):
             if status_code == 200 and not hasattr(req, 'redirect_dict'):
                 res.set((name, req.get_full_url(), req.get_header('Host'),))
         except Exception, e:
+            # TODO: log
             pass
 
     def resolve(self, filename):
