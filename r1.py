@@ -1,6 +1,10 @@
 THUMB_DATA = './data'
 THUMB_ACCEL_REDIRECT = '/resized'
 THUMB_CHUNK = 16 * 1024
+THUMB_MAX_WIDTH = 1920
+THUMB_MAX_HEIGHT = 1080
+THUMB_MAX_QUALITY = 90
+THUMB_DEFAULT_QUALITY = 75
 HTTPWHOHAS_TIMEOUT = 1
 
 from httpwhohas import HttpWhoHas
@@ -105,32 +109,22 @@ def get_thumb_src(user_id, media_id):
 
     return None
 
-import PIL
-from PIL import Image, ImageOps
+from resizer import resize
 
-def resize_pil(src, dst, width, height, fit=True, quality=75):
-    img = Image.open(src)
-    if fit:
-        img = ImageOps.fit(img, (width, height), Image.ANTIALIAS)
-    else:
-        hpercent = height / float(img.size[1])
-        wsize = int(float(img.size[0]) * float(hpercent))
-        img = img.resize((wsize, height), Image.ANTIALIAS)
-    img.save(dst, quality=quality)
-
-def get_thumb_resized(user_id, media_id, width, height, accel_redirect=False):
+def get_thumb_resized(user_id, media_id, width, height, fit, quality, accel_redirect=False):
     thumb_src_file = get_thumb_src(user_id, media_id)
 
     if not thumb_src_file:
         return None
 
     hash_path = hash_id(user_id, media_id)
-    thumb_resized_file_rel = '%s/%dx%d.jpeg' % (hash_path, width, height)
+    thumb_resized_file_rel = '%s/%dx%d-%s-%02d.jpeg' % (hash_path, width, height, '1' if fit else '0', quality)
     thumb_resized_file = '%s/%s' % (THUMB_DATA, thumb_resized_file_rel)
 
     with wlock(thumb_resized_file) as lockw:
         if lockw:
-            resize_pil(thumb_src_file, thumb_resized_file, width, height)
+            if not resize(thumb_src_file, thumb_resized_file, width, height, fit, quality):
+                return None
 
     if accel_redirect:
         return '%s/%s' % (THUMB_ACCEL_REDIRECT, thumb_resized_file_rel)
@@ -139,7 +133,7 @@ def get_thumb_resized(user_id, media_id, width, height, accel_redirect=False):
 import re
 from time import time
 
-PATH_RE = re.compile('^/(?P<user_id>[0-9a-f]{24})/(?P<media_id>[0-9a-f]{24})/thumb-(?P<width>\d{1,4})x(?P<height>\d{1,4}).jpeg')
+PATH_RE = re.compile('^/(?P<user_id>[0-9a-f]{24})/(?P<media_id>[0-9a-f]{24})/thumb-(?P<width>\d{1,4})?x(?P<height>\d{1,4})?(?P<fit>-f)?(?:-q(?P<quality>\d{1,2}))?.jpeg')
 
 class Timer:
     def __init__(self):
@@ -162,9 +156,36 @@ def app(environ, start_response):
 
     user_id = match.group('user_id')
     media_id = match.group('media_id')
-    width = int(match.group('width'))
-    height = int(match.group('height'))
-    thumb_resized = get_thumb_resized(user_id, media_id, width, height, accel_redirect=True)
+
+    width = match.group('width')
+    if width:
+        width = int(width)
+    else:
+        width = 0
+    if width > THUMB_MAX_WIDTH:
+        width = THUMB_MAX_WIDTH
+
+    height = match.group('height')
+    if height:
+        height = int(height)
+    else:
+        height = 0
+    if height > THUMB_MAX_HEIGHT:
+        height = THUMB_MAX_HEIGHT
+
+    quality = match.group('quality')
+    if quality:
+        quality = int(quality)
+    else:
+        quality = THUMB_DEFAULT_QUALITY
+    if quality > THUMB_MAX_QUALITY:
+        quality = THUMB_MAX_QUALITY
+    elif quality == 0:
+        quality = 1
+
+    fit = True if match.group('fit') else False
+
+    thumb_resized = get_thumb_resized(user_id, media_id, width, height, fit, quality, accel_redirect=True)
     if not thumb_resized:
         start_response('404 Not Found', [('X-Response-Time', str(timer))])
         return ''
