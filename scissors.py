@@ -11,7 +11,7 @@ from time import time
 from resizer import resize
 from httpwhohas import HttpWhoHas
 
-logger = logging.getLogger('scissors')
+LOGGER = logging.getLogger('scissors')
 
 
 @contextmanager
@@ -21,8 +21,8 @@ def wlock(filename):
             while True:
                 try:
                     fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
-                except IOError, e:
-                    if e.errno == errno.EAGAIN:
+                except IOError as exc:
+                    if exc.errno == errno.EAGAIN:
                         gevent.sleep(0.05)
                         continue
                     else:
@@ -30,14 +30,14 @@ def wlock(filename):
                 else:
                     yield
                     break
-    except IOError, e:
-        if e.errno == errno.ENOENT:
+    except IOError as exc:
+        if exc.errno == errno.ENOENT:
             with open(filename, 'wb') as lockw:
                 while True:
                     try:
                         fcntl.flock(lockw, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    except IOError, e:
-                        if e.errno == errno.EAGAIN:
+                    except IOError as exc:
+                        if exc.errno == errno.EAGAIN:
                             gevent.sleep(0.05)
                             continue
                         else:
@@ -83,10 +83,10 @@ class Scissors(object):
                 'localhost': {'ips': ['127.0.0.1'], 'headers': {'Host': 'localhost'}}
             },
             'cache_dir': './data',
-            'url_re': '/(?P<user_id>[a-f0-9]{6}(?P<u1>[a-f0-9])(?P<u2>[a-f0-9])[a-f0-9]{16})/(?P<media_id>[a-f0-9]{6}(?P<m1>[a-f0-9])(?P<m2>[a-f0-9])[a-f0-9]{16})/thumb-(?P<width>\d{1,4})?x(?P<height>\d{1,4})?(?P<fit>-f)?(?:-q(?P<quality>\d{1,2}))?.jpeg',
-            'origin_src': '/{u2}/{u1}/{user_id}/{m2}/{m1}/{media_id}/jpeg_thumbnail_source.jpeg',
-            'cache_src': '/{u2}/{u1}/{user_id}/{m2}/{m1}/{media_id}/source.jpeg',
-            'cache_dst': '/{u2}/{u1}/{user_id}/{m2}/{m1}/{media_id}/{width}x{height}-{fit}-q{quality}.jpeg',
+            'url_re': r'/(?P<path>.*)/thumb-(?P<width>\d{1,4})?x(?P<height>\d{1,4})?(?P<fit>-f)?(?:-q(?P<quality>\d{1,2}))?.jpeg',
+            'origin_src': '/{path}/jpeg_thumbnail_source.jpeg',
+            'cache_src': '/{path}/source.jpeg',
+            'cache_dst': '/{path}/{width}x{height}-{fit}-q{quality}.jpeg',
         }
         configfile = os.environ.get('CONFIG_FILE', 'scissors.conf')
         if os.path.exists(configfile):
@@ -97,14 +97,15 @@ class Scissors(object):
             self.hws.set_cluster(name, conf['ips'], conf.get('headers'))
 
         self.url_re = re.compile(self.config['url_re'])
+        self.values = {}
 
     def get_thumb_src(self):
         thumb_src_file = '%s%s' % (self.config['cache_dir'], self.config['cache_src'].format(**self.values))
 
         try:
             os.makedirs(os.path.dirname(thumb_src_file))
-        except OSError, e:
-            if e.errno not in (errno.EEXIST, errno.ENOENT):
+        except OSError as exc:
+            if exc.errno not in (errno.EEXIST, errno.ENOENT):
                 raise
 
         with wlock(thumb_src_file) as thumb_src_fdw:
@@ -119,7 +120,7 @@ class Scissors(object):
                     try:
                         req = urllib2.Request(url, headers=headers)
                         req = urllib2.urlopen(req, timeout=self.config['origin_fetch_timeout'])
-                    except Exception, e:
+                    except Exception as exc:
                         # TODO improve error logging
                         pass
                     else:
@@ -229,4 +230,5 @@ class Scissors(object):
             start_response('200 OK', headers)
             return environ['wsgi.file_wrapper'](open(thumb_resized, 'rb'))
 
-app = Scissors().app
+def app():
+    return Scissors().app
