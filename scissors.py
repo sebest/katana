@@ -69,48 +69,47 @@ class Scissors(object):
 
     def __init__(self):
         self.config = {
-            'PROXY': None,
-            'THUMB_DATA': './data',
-            'ACCEL_REDIRECT': False,
-            'ACCEL_REDIRECT_PATH': '/resized',
-            'THUMB_CHUNK': 16 * 1024,
-            'THUMB_MAX_WIDTH': 1920,
-            'THUMB_MAX_HEIGHT': 1080,
-            'THUMB_MAX_QUALITY': 90,
-            'THUMB_DEFAULT_QUALITY': 75,
-            'HTTP_TIMEOUT': 1,
-            'HTTPWHOHAS_TIMEOUT': 1,
-            'HTTPWHOHAS_MAPPING': {
+            'proxy': None,
+            'accel_redirect': False,
+            'accel_redirect_path': '/resized',
+            'thumb_chunk': 16 * 1024,
+            'thumb_max_width': 1920,
+            'thumb_max_height': 1080,
+            'thumb_max_quality': 90,
+            'thumb_default_quality': 75,
+            'origin_fetch_timeout': 1,
+            'origin_timeout': 1,
+            'origin_mapping': {
                 'localhost': {'ips': ['127.0.0.1'], 'headers': {'Host': 'localhost'}}
-            }
+            },
+            'cache_dir': './data',
+            'url_re': '/(?P<user_id>[a-f0-9]{6}(?P<u1>[a-f0-9])(?P<u2>[a-f0-9])[a-f0-9]{16})/(?P<media_id>[a-f0-9]{6}(?P<m1>[a-f0-9])(?P<m2>[a-f0-9])[a-f0-9]{16})/thumb-(?P<width>\d{1,4})?x(?P<height>\d{1,4})?(?P<fit>-f)?(?:-q(?P<quality>\d{1,2}))?.jpeg',
+            'origin_src': '/{u2}/{u1}/{user_id}/{m2}/{m1}/{media_id}/jpeg_thumbnail_source.jpeg',
+            'cache_src': '/{u2}/{u1}/{user_id}/{m2}/{m1}/{media_id}/source.jpeg',
+            'cache_dst': '/{u2}/{u1}/{user_id}/{m2}/{m1}/{media_id}/{width}x{height}-{fit}-q{quality}.jpeg',
         }
         configfile = os.environ.get('CONFIG_FILE', 'scissors.conf')
         if os.path.exists(configfile):
             execfile(configfile, {}, self.config)
 
-        self.hws = HttpWhoHas(proxy=self.config['PROXY'], timeout=self.config['HTTPWHOHAS_TIMEOUT'])
-        for name, conf in self.config['HTTPWHOHAS_MAPPING'].items():
+        self.hws = HttpWhoHas(proxy=self.config['proxy'], timeout=self.config['origin_timeout'])
+        for name, conf in self.config['origin_mapping'].items():
             self.hws.set_cluster(name, conf['ips'], conf.get('headers'))
 
-        self.PATH_RE = re.compile('^/(?P<user_id>[0-9a-f]{24})/(?P<media_id>[0-9a-f]{24})/thumb-(?P<width>\d{1,4})?x(?P<height>\d{1,4})?(?P<fit>-f)?(?:-q(?P<quality>\d{1,2}))?.jpeg')
+        self.url_re = re.compile(self.config['url_re'])
 
-    def hash_id(self, user_id, media_id):
-        return '%s/%s/%s/%s/%s/%s' % (user_id[7], user_id[6], user_id, media_id[7], media_id[6], media_id)
-
-    def get_thumb_src(self,user_id, media_id):
-        hash_path = self.hash_id(user_id, media_id)
-        thumb_src_file_dir = '%s/%s' % (self.config['THUMB_DATA'], hash_path)
-        thumb_src_file = '%s/source.jpeg' % (thumb_src_file_dir)
+    def get_thumb_src(self):
+        thumb_src_file = '%s%s' % (self.config['cache_dir'], self.config['cache_src'].format(**self.values))
 
         try:
-            os.makedirs(thumb_src_file_dir)
+            os.makedirs(os.path.dirname(thumb_src_file))
         except OSError, e:
             if e.errno not in (errno.EEXIST, errno.ENOENT):
                 raise
 
         with wlock(thumb_src_file) as thumb_src_fdw:
             if thumb_src_fdw:
-                filename = '/%s/%s.jpeg' % (hash_path, 'jpeg_thumbnail_source')
+                filename = self.config['origin_src'].format(**self.values)
                 info = self.hws.resolve(filename)
                 if info:
                     url = info[1]
@@ -119,13 +118,13 @@ class Scissors(object):
                         headers['Host'] = info[2]
                     try:
                         req = urllib2.Request(url, headers=headers)
-                        req = urllib2.urlopen(req, timeout=self.config['HTTP_TIMEOUT'])
+                        req = urllib2.urlopen(req, timeout=self.config['origin_fetch_timeout'])
                     except Exception, e:
                         # TODO improve error logging
                         pass
                     else:
                         while True:
-                            chunk = req.read(self.config['THUMB_CHUNK'])
+                            chunk = req.read(self.config['thumb_chunk'])
                             if not chunk:
                                 break
                             thumb_src_fdw.write(chunk)
@@ -139,24 +138,29 @@ class Scissors(object):
 
         return None
 
-    def get_thumb_resized(self, user_id, media_id, width, height, fit, quality):
-        thumb_src_file = self.get_thumb_src(user_id, media_id)
+    def get_thumb_resized(self, width, height, fit, quality):
+        thumb_src_file = self.get_thumb_src()
 
         if not thumb_src_file:
             return None
 
-        hash_path = self.hash_id(user_id, media_id)
-        thumb_resized_file_rel = '%s/%dx%d-%s-%02d.jpeg' % (hash_path, width, height, '1' if fit else '0', quality)
-        thumb_resized_file = '%s/%s' % (self.config['THUMB_DATA'], thumb_resized_file_rel)
+        thumb_resized_file_rel = self.config['cache_dst'].format(**self.values)
+        thumb_resized_file = '%s%s' % (self.config['cache_dir'], thumb_resized_file_rel)
 
         with wlock(thumb_resized_file) as lockw:
             if lockw:
                 if not resize(thumb_src_file, thumb_resized_file, width, height, fit, quality):
                     return None
 
-        if self.config['ACCEL_REDIRECT']:
-            return '%s/%s' % (self.config['ACCEL_REDIRECT_PATH'], thumb_resized_file_rel)
-        return thumb_resized_file
+            if os.path.exists(thumb_resized_file):
+                if os.path.getsize(thumb_resized_file):
+                    if self.config['accel_redirect']:
+                        return '%s%s' % (self.config['accel_redirect_path'], thumb_resized_file_rel)
+                    return thumb_resized_file
+                else:
+                    os.unlink(thumb_resized_file)
+
+        return None
 
     def app(self, environ, start_response):
         timer = Timer()
@@ -165,49 +169,59 @@ class Scissors(object):
             start_response('405 Invalid Method', [])
             return ''
 
-        match = self.PATH_RE.match(environ['PATH_INFO'])
+        match = self.url_re.match(environ['PATH_INFO'])
         if not match:
             start_response('404 Not Found', [])
             return ''
 
-        user_id = match.group('user_id')
-        media_id = match.group('media_id')
+        self.values = match.groupdict()
 
         width = match.group('width')
         if width:
             width = int(width)
         else:
             width = 0
-        if width > self.config['THUMB_MAX_WIDTH']:
-            width = self.config['THUMB_MAX_WIDTH']
+        if width > self.config['thumb_max_width']:
+            width = self.config['thumb_max_width']
 
         height = match.group('height')
         if height:
             height = int(height)
         else:
             height = 0
-        if height > self.config['THUMB_MAX_HEIGHT']:
-            height = self.config['THUMB_MAX_HEIGHT']
+        if height > self.config['thumb_max_height']:
+            height = self.config['thumb_max_height']
 
         quality = match.group('quality')
         if quality:
             quality = int(quality)
         else:
-            quality = self.config['THUMB_DEFAULT_QUALITY']
-        if quality > self.config['THUMB_MAX_QUALITY']:
-            quality = self.config['THUMB_MAX_QUALITY']
+            quality = self.config['thumb_default_quality']
+        if quality > self.config['thumb_max_quality']:
+            quality = self.config['thumb_max_quality']
         elif quality == 0:
             quality = 1
 
         fit = True if match.group('fit') else False
 
-        thumb_resized = self.get_thumb_resized(user_id, media_id, width, height, fit, quality)
+        if width == height == 0:
+            start_response('404 Invalid Dimensions', [('X-Response-Time', str(timer))])
+            return ''
+
+        self.values.update({
+            'width': width,
+            'height': height,
+            'fit': '1' if fit else '0',
+            'quality': quality,
+            })
+
+        thumb_resized = self.get_thumb_resized(width, height, fit, quality)
         if not thumb_resized:
             start_response('404 Not Found', [('X-Response-Time', str(timer))])
             return ''
 
         headers = [('X-Response-Time', str(timer)), ('Content-Type', 'image/jpeg'),]
-        if self.config['ACCEL_REDIRECT']:
+        if self.config['accel_redirect']:
             headers.append(('X-Accel-Redirect', thumb_resized))
             start_response('200 OK', headers)
             return ''

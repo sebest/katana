@@ -14,7 +14,7 @@ def resize(src, dst, width=0, height=0, fit=True, quality=75):
         return False
 
     origin_width, origin_height = img.size
-    if not origin_height * origin_width:
+    if origin_height == origin_width == 0:
         return False
 
     if not width:
