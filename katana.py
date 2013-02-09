@@ -1,3 +1,5 @@
+__version__ = '1.0'
+
 import os
 import re
 import errno
@@ -11,8 +13,9 @@ from time import time
 from resizer import resize
 from httpwhohas import HttpWhoHas
 
-LOGGER = logging.getLogger('scissors')
+LOGGER = logging.getLogger('katana')
 
+USER_AGENT = 'Katana/%s' % __version__
 
 @contextmanager
 def wlock(filename):
@@ -65,14 +68,14 @@ class Timer:
         return '%.3f ms' % (time() - self.start)
 
 
-class Scissors(object):
+class Katana(object):
 
     def __init__(self):
         self.config = {
             'proxy': None,
             'accel_redirect': False,
             'accel_redirect_path': '/resized',
-            'thumb_chunk': 16 * 1024,
+            'chunk_size': 16 * 1024,
             'thumb_max_width': 1920,
             'thumb_max_height': 1080,
             'thumb_max_quality': 90,
@@ -83,38 +86,44 @@ class Scissors(object):
                 'localhost': {'ips': ['127.0.0.1'], 'headers': {'Host': 'localhost'}}
             },
             'cache_dir': './data',
-            'url_re': r'/(?P<path>.*)/thumb-(?P<width>\d{1,4})?x(?P<height>\d{1,4})?(?P<fit>-f)?(?:-q(?P<quality>\d{1,2}))?.jpeg',
-            'origin_src': '/{path}/jpeg_thumbnail_source.jpeg',
-            'cache_src': '/{path}/source.jpeg',
-            'cache_dst': '/{path}/{width}x{height}-{fit}-q{quality}.jpeg',
+            'resize_url_re': None,
+            'resize_origin': '',
+            'resize_cache_path_source': '',
+            'resize_cache_path_resized': '',
+            'proxy_url_re': None,
+            'proxy_origin': '',
+            'proxy_cache_path': '',
         }
-        configfile = os.environ.get('CONFIG_FILE', 'scissors.conf')
+        configfile = os.environ.get('CONFIG_FILE', 'katana.conf')
         if os.path.exists(configfile):
             execfile(configfile, {}, self.config)
 
-        self.hws = HttpWhoHas(proxy=self.config['proxy'], timeout=self.config['origin_timeout'])
+        self.hws = HttpWhoHas(proxy=self.config['proxy'], timeout=self.config['origin_timeout'], user_agent=USER_AGENT)
         for name, conf in self.config['origin_mapping'].items():
             self.hws.set_cluster(name, conf['ips'], conf.get('headers'))
 
-        self.url_re = re.compile(self.config['url_re'])
-        self.values = {}
+        if self.config['resize_url_re']:
+            self.resize_url_re = re.compile(self.config['resize_url_re'])
+        else:
+            self.resize_url_re = None
+        if self.config['proxy_url_re']:
+            self.proxy_url_re = re.compile(self.config['proxy_url_re'])
+        else:
+            self.proxy_url_re = None
 
-    def get_thumb_src(self):
-        thumb_src_file = '%s%s' % (self.config['cache_dir'], self.config['cache_src'].format(**self.values))
-
+    def get_file(self, origin, cache):
         try:
-            os.makedirs(os.path.dirname(thumb_src_file))
+            os.makedirs(os.path.dirname(cache))
         except OSError as exc:
             if exc.errno not in (errno.EEXIST, errno.ENOENT):
                 raise
 
-        with wlock(thumb_src_file) as thumb_src_fdw:
-            if thumb_src_fdw:
-                filename = self.config['origin_src'].format(**self.values)
-                info = self.hws.resolve(filename)
+        with wlock(cache) as cache_fdw:
+            if cache_fdw:
+                info = self.hws.resolve(origin)
                 if info:
                     url = info[1]
-                    headers = {'User-Agent': 'DcRecizer'}
+                    headers = {'User-Agent': USER_AGENT}
                     if info[2]:
                         headers['Host'] = info[2]
                     try:
@@ -125,59 +134,36 @@ class Scissors(object):
                         pass
                     else:
                         while True:
-                            chunk = req.read(self.config['thumb_chunk'])
+                            chunk = req.read(self.config['chunk_size'])
                             if not chunk:
                                 break
-                            thumb_src_fdw.write(chunk)
+                            cache_fdw.write(chunk)
 
-                        return thumb_src_file
-            elif os.path.exists(thumb_src_file):
-                if os.path.getsize(thumb_src_file):
-                    return thumb_src_file
+                        return cache
+            elif os.path.exists(cache):
+                if os.path.getsize(cache):
+                    return cache
                 else:
-                    os.unlink(thumb_src_file)
+                    os.unlink(cache)
 
         return None
 
-    def get_thumb_resized(self, width, height, fit, quality):
-        thumb_src_file = self.get_thumb_src()
-
-        if not thumb_src_file:
-            return None
-
-        thumb_resized_file_rel = self.config['cache_dst'].format(**self.values)
-        thumb_resized_file = '%s%s' % (self.config['cache_dir'], thumb_resized_file_rel)
-
-        with wlock(thumb_resized_file) as lockw:
+    def get_image_resized(self, image_src, cache, width, height, fit, quality, values):
+        with wlock(cache) as lockw:
             if lockw:
-                if not resize(thumb_src_file, thumb_resized_file, width, height, fit, quality):
+                if not resize(image_src, cache, width, height, fit, quality):
                     return None
 
-            if os.path.exists(thumb_resized_file):
-                if os.path.getsize(thumb_resized_file):
-                    if self.config['accel_redirect']:
-                        return '%s%s' % (self.config['accel_redirect_path'], thumb_resized_file_rel)
-                    return thumb_resized_file
+            if os.path.exists(cache):
+                if os.path.getsize(cache):
+                    return cache
                 else:
-                    os.unlink(thumb_resized_file)
+                    os.unlink(cache)
 
         return None
 
-    def app(self, environ, start_response):
-        timer = Timer()
-
-        if environ['REQUEST_METHOD'] not in ('GET', 'HEAD'):
-            start_response('405 Invalid Method', [])
-            return ''
-
-        match = self.url_re.match(environ['PATH_INFO'])
-        if not match:
-            start_response('404 Not Found', [])
-            return ''
-
-        self.values = match.groupdict()
-
-        width = match.group('width')
+    def resize(self, values):
+        width = values.get('width')
         if width:
             width = int(width)
         else:
@@ -185,7 +171,7 @@ class Scissors(object):
         if width > self.config['thumb_max_width']:
             width = self.config['thumb_max_width']
 
-        height = match.group('height')
+        height = values.get('height')
         if height:
             height = int(height)
         else:
@@ -193,7 +179,7 @@ class Scissors(object):
         if height > self.config['thumb_max_height']:
             height = self.config['thumb_max_height']
 
-        quality = match.group('quality')
+        quality = values.get('quality')
         if quality:
             quality = int(quality)
         else:
@@ -203,32 +189,65 @@ class Scissors(object):
         elif quality == 0:
             quality = 1
 
-        fit = True if match.group('fit') else False
+        fit = True if values.get('fit') else False
 
         if width == height == 0:
             start_response('404 Invalid Dimensions', [('X-Response-Time', str(timer))])
             return ''
 
-        self.values.update({
+        values.update({
             'width': width,
             'height': height,
             'fit': '1' if fit else '0',
             'quality': quality,
             })
 
-        thumb_resized = self.get_thumb_resized(width, height, fit, quality)
-        if not thumb_resized:
-            start_response('404 Not Found', [('X-Response-Time', str(timer))])
-            return ''
+        origin = self.config['resize_origin'].format(**values)
+        cache = '%s%s' % (self.config['cache_dir'], self.config['resize_cache_path_source'].format(**values))
+        image_src = self.get_file(origin, cache)
+        if image_src:
+            cache = '%s%s' % (self.config['cache_dir'], self.config['resize_cache_path_resized'].format(**values))
+            return self.get_image_resized(image_src, cache, width, height, fit, quality, values)
+        return None
 
-        headers = [('X-Response-Time', str(timer)), ('Content-Type', 'image/jpeg'),]
-        if self.config['accel_redirect']:
-            headers.append(('X-Accel-Redirect', thumb_resized))
-            start_response('200 OK', headers)
-            return ''
-        else:
-            start_response('200 OK', headers)
-            return environ['wsgi.file_wrapper'](open(thumb_resized, 'rb'))
+    def proxy(self, values):
+        origin = self.config['proxy_origin'].format(**values)
+        cache = '%s%s' % (self.config['cache_dir'], self.config['proxy_cache_path'].format(**values))
+        return self.get_file(origin, cache)
 
-def app():
-    return Scissors().app
+    def app(self, environ, start_response):
+        timer = Timer()
+
+        if environ['REQUEST_METHOD'] not in ('GET', 'HEAD'):
+            start_response('405 Invalid Method', [])
+            return []
+
+        image_dst = None
+        match = None
+        if self.resize_url_re:
+            match = self.resize_url_re.match(environ['PATH_INFO'])
+            if match:
+                values = match.groupdict()
+                image_dst = self.resize(value)
+
+        if not match and self.proxy_url_re:
+            match = self.proxy_url_re.match(environ['PATH_INFO'])
+            if match:
+                values = match.groupdict()
+                image_dst = self.proxy(values)
+
+        if image_dst:
+            headers = [('Content-Type', 'image/jpeg'), ('X-Response-Time', str(timer)),]
+            if self.config['accel_redirect']:
+                accel_redirect = self.config['accel_redirect_path'] + image_dst[len(self.config['cache_dir']):]
+                headers.append(('X-Accel-Redirect', accel_redirect))
+                start_response('200 OK', headers)
+                return []
+            else:
+                start_response('200 OK', headers)
+                return environ['wsgi.file_wrapper'](open(image_dst, 'rb'))
+
+        start_response('404 Not Found', [('X-Response-Time', str(timer))])
+        return ''
+
+app = Katana().app
