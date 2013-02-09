@@ -102,15 +102,6 @@ class Katana(object):
         for name, conf in self.config['origin_mapping'].items():
             self.hws.set_cluster(name, conf['ips'], conf.get('headers'))
 
-        if self.config['resize_url_re']:
-            self.resize_url_re = re.compile(self.config['resize_url_re'])
-        else:
-            self.resize_url_re = None
-        if self.config['proxy_url_re']:
-            self.proxy_url_re = re.compile(self.config['proxy_url_re'])
-        else:
-            self.proxy_url_re = None
-
     def get_file(self, origin, cache):
         try:
             os.makedirs(os.path.dirname(cache))
@@ -223,29 +214,23 @@ class Katana(object):
             return []
 
         image_dst = None
-        match = None
-        if self.resize_url_re:
-            match = self.resize_url_re.match(environ['PATH_INFO'])
-            if match:
-                values = match.groupdict()
-                image_dst = self.resize(value)
-
-        if not match and self.proxy_url_re:
-            match = self.proxy_url_re.match(environ['PATH_INFO'])
-            if match:
-                values = match.groupdict()
-                image_dst = self.proxy(values)
-
-        if image_dst:
-            headers = [('Content-Type', 'image/jpeg'), ('X-Response-Time', str(timer)),]
-            if self.config['accel_redirect']:
-                accel_redirect = self.config['accel_redirect_path'] + image_dst[len(self.config['cache_dir']):]
-                headers.append(('X-Accel-Redirect', accel_redirect))
-                start_response('200 OK', headers)
-                return []
-            else:
-                start_response('200 OK', headers)
-                return environ['wsgi.file_wrapper'](open(image_dst, 'rb'))
+        for action in ('resize', 'proxy'):
+            regex = self.config['%s_url_re' % action]
+            if regex:
+                match = re.match(regex, environ['PATH_INFO'])
+                if match:
+                    image_dst = getattr(self, action)(match.groupdict())
+                    if image_dst:
+                        headers = [('Content-Type', 'image/jpeg'), ('X-Response-Time', str(timer)),]
+                        if self.config['accel_redirect']:
+                            accel_redirect = self.config['accel_redirect_path'] + image_dst[len(self.config['cache_dir']):]
+                            headers.append(('X-Accel-Redirect', accel_redirect))
+                            start_response('200 OK', headers)
+                            return []
+                        else:
+                            start_response('200 OK', headers)
+                            return environ['wsgi.file_wrapper'](open(image_dst, 'rb'))
+                    break
 
         start_response('404 Not Found', [('X-Response-Time', str(timer))])
         return ''
