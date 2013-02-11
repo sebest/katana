@@ -1,5 +1,7 @@
 __version__ = '1.0'
 
+from gevent import monkey; monkey.patch_all()
+
 import os
 import re
 import errno
@@ -7,13 +9,12 @@ import urllib2
 import fcntl
 import gevent
 import logging
+import logging.config
 from contextlib import contextmanager
 from time import time
 
 from resizer import resize
 from httpwhohas import HttpWhoHas
-
-LOGGER = logging.getLogger('katana')
 
 USER_AGENT = 'Katana/%s' % __version__
 
@@ -65,12 +66,15 @@ class Timer:
         self.start = time()
 
     def __str__(self):
-        return '%.3f ms' % (time() - self.start)
+        return '%.3f ms' % ((time() - self.start) * 1000)
 
 
 class Katana(object):
 
     def __init__(self):
+        self.slog = logging.getLogger('katana.server')
+        self.clog = logging.getLogger('katana.cleaner')
+
         self.config = {
             'proxy': None,
             'accel_redirect': False,
@@ -85,7 +89,6 @@ class Katana(object):
             'origin_mapping': {
                 'localhost': {'ips': ['127.0.0.1'], 'headers': {'Host': 'localhost'}}
             },
-            'cache_dir': './data',
             'resize_url_re': None,
             'resize_origin': '',
             'resize_cache_path_source': '',
@@ -93,14 +96,30 @@ class Katana(object):
             'proxy_url_re': None,
             'proxy_origin': '',
             'proxy_cache_path': '',
+            'cache_dir': './data',
+            'cache_dir_max_usage': 90,
+            'clean_older_than': 24,
+            'clean_every': 4,
+            'clean_dry': False,
+            'logging': {'version': 1},
         }
         configfile = os.environ.get('CONFIG_FILE', 'katana.conf')
         if os.path.exists(configfile):
             execfile(configfile, {}, self.config)
 
+        logging.config.dictConfig(self.config['logging'])
+
         self.hws = HttpWhoHas(proxy=self.config['proxy'], timeout=self.config['origin_timeout'], user_agent=USER_AGENT)
         for name, conf in self.config['origin_mapping'].items():
             self.hws.set_cluster(name, conf['ips'], conf.get('headers'))
+
+    def _get_cache(self, cache):
+        if os.path.exists(cache):
+            if os.path.getsize(cache):
+                return cache
+            else:
+                os.unlink(cache)
+        return None
 
     def get_file(self, origin, cache):
         try:
@@ -129,13 +148,10 @@ class Katana(object):
                             if not chunk:
                                 break
                             cache_fdw.write(chunk)
-
                         return cache
-            elif os.path.exists(cache):
-                if os.path.getsize(cache):
-                    return cache
-                else:
-                    os.unlink(cache)
+
+            elif self._get_cache(cache):
+                return cache
 
         return None
 
@@ -145,11 +161,8 @@ class Katana(object):
                 if not resize(image_src, cache, width, height, fit, quality):
                     return None
 
-            if os.path.exists(cache):
-                if os.path.getsize(cache):
-                    return cache
-                else:
-                    os.unlink(cache)
+            if self._get_cache(cache):
+                return cache
 
         return None
 
@@ -183,8 +196,7 @@ class Katana(object):
         fit = True if values.get('fit') else False
 
         if width == height == 0:
-            start_response('404 Invalid Dimensions', [('X-Response-Time', str(timer))])
-            return ''
+            return None
 
         values.update({
             'width': width,
@@ -197,6 +209,7 @@ class Katana(object):
         cache = '%s%s' % (self.config['cache_dir'], self.config['resize_cache_path_source'].format(**values))
         image_src = self.get_file(origin, cache)
         if image_src:
+            os.utime(image_src, None)
             cache = '%s%s' % (self.config['cache_dir'], self.config['resize_cache_path_resized'].format(**values))
             return self.get_image_resized(image_src, cache, width, height, fit, quality, values)
         return None
@@ -228,11 +241,92 @@ class Katana(object):
                             start_response('200 OK', headers)
                             return []
                         else:
-                            start_response('200 OK', headers)
-                            return environ['wsgi.file_wrapper'](open(image_dst, 'rb'))
-                    break
+                            image = open(image_dst, 'rb')
+                            try:
+                                start_response('200 OK', headers)
+                                return environ['wsgi.file_wrapper'](image, self.config['chunk_size'])
+                            except KeyError:
+                                start_response('200 OK', headers)
+                                return  iter(lambda: image.read(self.config['chunk_size']), '')
+                break
 
         start_response('404 Not Found', [('X-Response-Time', str(timer))])
         return ''
 
-app = Katana().app
+    def clean(self, dry=False):
+        try:
+            cleaner_lock = open(self.config['cache_dir'] + '/cleaner.lock', 'w')
+            fcntl.flock(cleaner_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            cleaner_lock.write('%s\n' % os.getpid())
+        except (IOError, OSError) as exc:
+            if exc.errno == errno.EAGAIN:
+                self.clog.debug('cleaner already running')
+            else:
+                self.clog.exception('error while acquiring cleaner lock')
+        else:
+            clean_older_than = self.config['clean_older_than']
+            self.clog.info('cleaner process starting')
+            while True:
+                st = os.statvfs(self.config['cache_dir'])
+                disk_usage = (st.f_blocks - st.f_bfree) / float(st.f_blocks) * 100
+                if disk_usage < self.config['cache_dir_max_usage']:
+                    self.clog.info('cleaner process ending')
+                    break
+                now = time()
+                for dirpath, dirnames, filenames in os.walk(self.config['cache_dir']):
+                    for filename in filenames:
+                        filepath = dirpath + '/' + filename
+                        atime = os.path.getatime(filepath)
+                        age = (now - atime) / 3600.
+                        if age > clean_older_than:
+                            lock = open(filepath, 'w')
+                            try:
+                                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                            except IOError as exc:
+                                if exc.errno == errno.EAGAIN:
+                                    self.clog.debug('%s already locked', filepath)
+                                else:
+                                    self.clog.exception('error while cleaning %s', filepath)
+                            else:
+                                if not dry:
+                                    os.unlink(filepath)
+                                self.clog.info('cleaned %s : %fh old', filepath, age)
+                clean_older_than -= 1
+                if clean_older_than < 0:
+                    self.clog.error('no more file to clean')
+                    break
+            cleaner_lock.close()
+
+    def start_cleaner(self):
+        while True:
+            self.clean(self.config['clean_dry'])
+            gevent.sleep(self.config['clean_every'] * 3600)
+
+def create_app():
+    return Katana().app
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--clean', help='start the cleaner process', action='store_true')
+    group.add_argument('--dump', help='print the configuration', action='store_true')
+    group.add_argument('--start', help='start the server', action='store_true')
+    args = parser.parse_args()
+
+    if args.dump:
+        from pprint import pprint
+        pprint(Katana().config)
+
+    elif args.clean:
+        try:
+            Katana().start_cleaner()
+        except KeyboardInterrupt:
+            pass
+
+    elif args.start:
+        from gevent.pywsgi import WSGIServer
+        WSGIServer(('', 8088), Katana().app).serve_forever()
+
+if __name__ == '__main__':
+    main()
