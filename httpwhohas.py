@@ -1,12 +1,13 @@
-import gevent
-
 from gevent import monkey; monkey.patch_all()
 
-from gevent.event import AsyncResult
+import gevent
+
+from gevent.queue import Queue
 from gevent.timeout import Timeout
 
 from random import sample
 import urllib2
+import logging
 
 class HttpWhoHas(object):
 
@@ -23,6 +24,8 @@ class HttpWhoHas(object):
                 )
             )
 
+        self.logger = logging.getLogger('httpwhohas')
+
     def set_cluster(self, name, ips, headers=None):
         self.clusters[name] = {
             'ips': ips,
@@ -30,30 +33,41 @@ class HttpWhoHas(object):
             'per_cluster': min(self.per_cluster, len(ips)),
         }
 
-    def do_req(self, name, req, res):
+    def _do_req(self, name, req, res):
+        full_url = req.get_full_url()
         try:
             status_code = urllib2.urlopen(req, timeout=self.timeout).code
             if status_code == 200 and not hasattr(req, 'redirect_dict'):
-                res.set((name, req.get_full_url(), req.get_header('Host'),))
+                res.put((name, full_url, req.get_header('Host'),))
+            else:
+                self.logger.debug('%s url=%s returned code %d', name, full_url, status_code)
+        except urllib2.HTTPError as exc:
+           self.logger.debug('%s url=%s error: %s', name, full_url, exc)
         except Exception as exc:
-            # TODO: log
-            pass
+            self.logger.exception('%s url=%s got an exception', name, full_url)
+
+    def _do_reqs(self, reqs, res):
+        jobs = [gevent.spawn(self._do_req, name, req, res) for name, req in reqs]
+        gevent.joinall(jobs, timeout=self.timeout)
+        res.put(None)
+        gevent.killall(jobs)
 
     def resolve(self, filename):
-        res = AsyncResult()
+        self.logger.debug('resolving %s', filename)
+        res = Queue()
         reqs = []
         for name, info in self.clusters.items():
             headers = {'User-Agent': self.user_agent}
             headers.update(info['headers'])
             for ip in sample(info['ips'], info['per_cluster']):
+                self.logger.debug('looking for %s on %s with headers %s', filename, ip, headers)
                 req = urllib2.Request('http://%s%s' % (ip, filename), headers=headers)
                 req.get_method = lambda: 'HEAD'
                 reqs.append((name, req))
 
-        jobs = [gevent.spawn(self.do_req, name, req, res) for name, req in reqs]
-        try:
-            info = res.get(timeout=self.timeout)
-        except Timeout:
-            info = None
-        gevent.killall(jobs)
-        return info
+        gevent.spawn(self._do_reqs, reqs, res)
+        result = res.get()
+        if result:
+            self.logger.debug('found %s on %s: url=%s host=%s', filename, result[0], result[1], result[2])
+        else:
+            self.logger.debug('%s not found', filename)
