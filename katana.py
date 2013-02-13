@@ -130,6 +130,7 @@ class Katana(object):
 
         with wlock(cache) as cache_fdw:
             if cache_fdw:
+                self.slog.debug('write lock: resolving %s', origin)
                 info = self.hws.resolve(origin)
                 if info:
                     url = info[1]
@@ -139,18 +140,23 @@ class Katana(object):
                     try:
                         req = urllib2.Request(url, headers=headers)
                         req = urllib2.urlopen(req, timeout=self.config['origin_fetch_timeout'])
+                    except urllib2.HTTPError as exc:
+                        self.slog.error('fetching url=%s error: %s', url, exc)
                     except Exception as exc:
-                        # TODO improve error logging
-                        pass
+                        self.slog.exception('fetching url=%s failed', url)
                     else:
                         while True:
                             chunk = req.read(self.config['chunk_size'])
                             if not chunk:
                                 break
                             cache_fdw.write(chunk)
+                        self.slog.debug('fetched %s to %s', url, cache)
                         return cache
+                else:
+                    self.slog.debug('%s not found on origin', url)
 
             elif self._get_cache(cache):
+                self.slog.debug('read lock: %s found in cache as %s', origin, cache)
                 return cache
 
         return None
@@ -248,7 +254,7 @@ class Katana(object):
                             except KeyError:
                                 start_response('200 OK', headers)
                                 return  iter(lambda: image.read(self.config['chunk_size']), '')
-                break
+                    break
 
         start_response('404 Not Found', [('X-Response-Time', str(timer))])
         return ''
