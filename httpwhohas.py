@@ -71,3 +71,4 @@ class HttpWhoHas(object):
             self.logger.debug('found %s on %s: url=%s host=%s', filename, result[0], result[1], result[2])
         else:
             self.logger.debug('%s not found', filename)
+        return result
