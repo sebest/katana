@@ -153,7 +153,7 @@ class Katana(object):
                         self.slog.debug('fetched %s to %s', url, cache)
                         return cache
                 else:
-                    self.slog.debug('%s not found on origin', url)
+                    self.slog.debug('%s not found on origin', cache)
 
             elif self._get_cache(cache):
                 self.slog.debug('read lock: %s found in cache as %s', origin, cache)
