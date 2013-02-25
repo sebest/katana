@@ -12,6 +12,7 @@ import logging
 import logging.config
 from contextlib import contextmanager
 from time import time
+from datetime import datetime
 
 from resizer import resize
 from httpwhohas import HttpWhoHas
@@ -69,7 +70,7 @@ class Timer:
         return '%.3f ms' % ((time() - self.start) * 1000)
 
 
-META_MAGIC = 'A'
+META_MAGIC = 'B'
 
 
 class Katana(object):
@@ -100,7 +101,8 @@ class Katana(object):
             'proxy_origin': '',
             'proxy_cache_path': '',
             'cache_force_expires': False,
-            'cache_default_expires': 600,
+            'cache_default_expires': 300,
+            'external_expires': 600,
             'cache_dir': './data',
             'cache_dir_max_usage': 90,
             'clean_older_than': 24,
@@ -111,6 +113,9 @@ class Katana(object):
         configfile = os.environ.get('CONFIG_FILE', 'katana.conf')
         if os.path.exists(configfile):
             execfile(configfile, {}, self.config)
+
+        if self.config['cache_force_expires']:
+            self.config['external_expires'] = max(self.config['external_expires'], self.config['cache_default_expires'])
 
         logging.config.dictConfig(self.config['logging'])
 
@@ -123,8 +128,9 @@ class Katana(object):
             with open('%s.meta' % cache, 'r') as cache_meta:
                 splitted = cache_meta.read().split('|')
                 if splitted[0] == META_MAGIC:
-                    magic, expires, last_modified, etag = splitted
+                    magic, timestamp, expires, last_modified, etag = splitted
                     return {
+                        'timestamp': int(timestamp),
                         'expires': int(expires),
                         'last_modified': last_modified,
                         'etag': etag,
@@ -139,6 +145,7 @@ class Katana(object):
     def set_meta(self, cache, headers):
         try:
             with open('%s.meta' % cache, 'w') as cache_meta:
+                timestamp = int(time())
                 etag = headers.get('etag', '')
                 last_modified = headers.get('last-modified', '')
                 expires = self.config['cache_default_expires']
@@ -146,9 +153,9 @@ class Katana(object):
                     m = re.match('.*max-age=(\d+).*', headers.get('cache-control', ''))
                     if m:
                         expires = int(m.group(1))
-                expires = int(time() + expires)
-                cache_meta.write('%s|%s|%s|%s' % (META_MAGIC, expires, last_modified, etag))
+                cache_meta.write('%s|%s|%s|%s|%s' % (META_MAGIC, timestamp, expires, last_modified, etag))
                 return {
+                    'timestamp': timestamp,
                     'expires': expires,
                     'last_modified': last_modified,
                     'etag': etag,
@@ -175,16 +182,16 @@ class Katana(object):
         with wlock(cache) as (write, cache_fd):
             meta = self.get_meta(cache)
             if 'expires' in meta:
-                if time() > meta['expires']:
+                if time() > (meta['timestamp'] + meta['expires']):
                     write = True
-            if write:
+            if write or not meta:
                 self.slog.debug('write lock: resolving %s', origin)
                 info = self.hws.resolve(origin, etag=meta.get('etag'), last_modified=meta.get('last_modified'))
                 if info:
                     url = info['url']
                     if not info['modified']:
                         self.slog.debug('url=%s not modified', url)
-                        return cache, self.set_meta(cache, info['headers'])
+                        return cache, self.set_meta(cache, info['headers']), False
                     headers = {'User-Agent': USER_AGENT}
                     if info['host']:
                         headers['Host'] = info['host']
@@ -203,19 +210,19 @@ class Katana(object):
                                 break
                             cache_fd.write(chunk)
                         self.slog.debug('fetched %s to %s', url, cache)
-                        return cache, meta
+                        return cache, meta, True
                 else:
                     self.slog.debug('%s not found on origin', cache)
 
             elif self._get_cache(cache):
                 self.slog.debug('read lock: %s found in cache as %s', origin, cache)
-                return cache, meta
+                return cache, meta, False
 
-        return None, {}
+        return None, {}, False
 
-    def get_image_resized(self, image_src, cache, width, height, fit, quality, values):
+    def get_image_resized(self, image_src, cache, width, height, fit, quality, force_update):
         with wlock(cache) as (write, cache_fd):
-            if write:
+            if write or force_update:
                 if not resize(image_src, cache, width, height, fit, quality):
                     return None
 
@@ -265,12 +272,11 @@ class Katana(object):
 
         origin = self.config['resize_origin'].format(**values)
         cache = '%s%s' % (self.config['cache_dir'], self.config['resize_cache_path_source'].format(**values))
-        image_src, meta = self.get_file(origin, cache)
+        image_src, meta, modified = self.get_file(origin, cache)
         if image_src:
-            os.utime(image_src, None)
             cache = '%s%s' % (self.config['cache_dir'], self.config['resize_cache_path_resized'].format(**values))
-            return self.get_image_resized(image_src, cache, width, height, fit, quality, values)
-        return None, meta
+            return self.get_image_resized(image_src, cache, width, height, fit, quality, modified), meta, modified
+        return None, meta, modified
 
     def proxy(self, values):
         origin = self.config['proxy_origin'].format(**values)
@@ -290,13 +296,19 @@ class Katana(object):
             if regex:
                 match = re.match(regex, environ['PATH_INFO'])
                 if match:
-                    image_dst, meta = getattr(self, action)(match.groupdict())
+                    image_dst, meta, modified = getattr(self, action)(match.groupdict())
                     if image_dst:
                         headers = [('Content-Type', 'image/jpeg'), ('X-Response-Time', str(timer)),]
                         if meta.get('etag'):
                             headers.append(('ETag', meta['etag']))
-                        if meta.get('last_modified'):
+                        elif meta.get('last_modified'):
                             headers.append(('Last-Modified', meta['last_modified']))
+                        expires = self.config['external_expires'] or meta.get('expires')
+                        if expires:
+                            timestamp_expires = meta['timestamp'] + expires
+                            max_age = timestamp_expires - time()
+                            headers.append(('Expires', datetime.utcfromtimestamp(timestamp_expires).strftime("%a, %d %b %Y %H:%M:%S GMT")))
+                            headers.append(('Cache-Control', 'max-age=%d' % max_age))
                         if self.config['accel_redirect']:
                             accel_redirect = self.config['accel_redirect_path'] + image_dst[len(self.config['cache_dir']):]
                             headers.append(('X-Accel-Redirect', accel_redirect))
