@@ -77,8 +77,8 @@ class HttpWhoHas(object):
             headers.update(info['headers'])
             if etag:
                 headers['If-None-Match'] = etag
-            if last_modified:
-                headers['If-modified-since'] = last_modified
+            elif last_modified:
+                headers['If-Modified-Since'] = last_modified
             for ip in sample(info['ips'], info['per_cluster']):
                 self.logger.debug('looking for %s on %s with headers %s', filename, ip, headers)
                 req = urllib2.Request('http://%s%s' % (ip, filename), headers=headers)
