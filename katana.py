@@ -139,7 +139,8 @@ class Katana(object):
                     self.slog.error('get_meta wrong magic [%s] for %s', splitted[0], cache)
                     os.remove('%s.meta' % cache)
         except (IOError, OSError) as exc:
-            self.slog.error('get_meta failed for %s: %s', cache, exc)
+            if exc.errno != errno.ENOENT:
+                self.slog.error('get_meta failed for %s: %s', cache, exc)
         return {}
 
     def set_meta(self, cache, headers):
@@ -198,7 +199,7 @@ class Katana(object):
                     try:
                         req = urllib2.Request(url, headers=headers)
                         resp = urllib2.urlopen(req, timeout=self.config['origin_fetch_timeout'])
-                    except urllib2.HTTPError as exc:
+                    except (urllib2.HTTPError, urllib2.URLError) as exc:
                         self.slog.error('fetching url=%s error: %s', url, exc)
                     except Exception as exc:
                         self.slog.exception('fetching url=%s failed', url)
