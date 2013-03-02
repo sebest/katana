@@ -3,7 +3,6 @@ from gevent import monkey; monkey.patch_all()
 import gevent
 
 from gevent.queue import Queue
-from gevent.timeout import Timeout
 
 from random import sample
 import urllib2
