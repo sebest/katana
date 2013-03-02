@@ -11,8 +11,7 @@ class Cleaner(object):
 
     def __init__(self):
         self.config = get_config()
-        self.clog = logging.getLogger('katana.cleaner')
-        logging.config.dictConfig(self.config['logging'])
+        self.logger = logging.getLogger('katana.cleaner')
 
     def clean(self, dry=False):
         try:
@@ -21,17 +20,17 @@ class Cleaner(object):
             cleaner_lock.write('%s\n' % os.getpid())
         except (IOError, OSError) as exc:
             if exc.errno == errno.EAGAIN:
-                self.clog.debug('cleaner already running')
+                self.logger.debug('cleaner already running')
             else:
-                self.clog.exception('error while acquiring cleaner lock')
+                self.logger.exception('error while acquiring cleaner lock')
         else:
             clean_older_than = self.config['clean_older_than']
-            self.clog.info('cleaner process starting')
+            self.logger.info('cleaner process starting')
             while True:
                 st = os.statvfs(self.config['cache_dir'])
                 disk_usage = (st.f_blocks - st.f_bfree) / float(st.f_blocks) * 100
                 if disk_usage < self.config['cache_dir_max_usage']:
-                    self.clog.info('cleaner process ending')
+                    self.logger.info('cleaner process ending')
                     break
                 now = time()
                 for dirpath, dirnames, filenames in os.walk(self.config['cache_dir']):
@@ -45,16 +44,16 @@ class Cleaner(object):
                                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
                             except IOError as exc:
                                 if exc.errno == errno.EAGAIN:
-                                    self.clog.debug('%s already locked', filepath)
+                                    self.logger.debug('%s already locked', filepath)
                                 else:
-                                    self.clog.exception('error while cleaning %s', filepath)
+                                    self.logger.exception('error while cleaning %s', filepath)
                             else:
                                 if not dry:
                                     os.unlink(filepath)
-                                self.clog.info('cleaned %s : %fh old', filepath, age)
+                                self.logger.info('cleaned %s : %fh old', filepath, age)
                 clean_older_than -= 1
                 if clean_older_than < 0:
-                    self.clog.error('no more file to clean')
+                    self.logger.error('no more file to clean')
                     break
             cleaner_lock.close()
 
