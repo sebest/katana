@@ -15,6 +15,7 @@ from .resizer import resize
 from .httpwhohas import HttpWhoHas
 from .utils import Timer, wlock
 from .meta import Meta
+from .ipc import IPC
 
 
 USER_AGENT = 'Katana/%s' % __version__
@@ -27,6 +28,7 @@ class Server(object):
         self.logger = logging.getLogger('katana.server')
 
         self.meta = Meta()
+        self.ipc = IPC(self.config['ipc_sock_path'], 'push')
 
         self.hws = HttpWhoHas(proxy=self.config['proxy'], timeout=self.config['origin_timeout'], user_agent=USER_AGENT)
         for name, conf in self.config['origin_mapping'].items():
@@ -192,5 +194,5 @@ class Server(object):
                     break
 
         start_response('404 Not Found', [('X-Response-Time', str(timer))])
-        return ''
+        return []
 

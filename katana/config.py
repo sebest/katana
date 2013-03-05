@@ -1,4 +1,5 @@
 DEFAULT_CONFIG = {
+    'ipc_sock_path': '/tmp/katana.sock',
     'proxy': None,
     'accel_redirect': False,
     'accel_redirect_path': '/resized',
