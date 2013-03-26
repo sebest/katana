@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from time import time, sleep
 
 @contextmanager
-def wlock(filename):
+def wlock(filename, retry_interval=0.05):
     try:
         with open(filename, 'rb+') as lock:
             while True:
@@ -13,7 +13,7 @@ def wlock(filename):
                     fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
                 except IOError as exc:
                     if exc.errno == errno.EAGAIN:
-                        sleep(0.05)
+                        sleep(retry_interval)
                         continue
                     else:
                         raise
@@ -28,7 +28,7 @@ def wlock(filename):
                         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
                     except IOError as exc:
                         if exc.errno == errno.EAGAIN:
-                            sleep(0.05)
+                            sleep(retry_interval)
                             continue
                         else:
                             raise
