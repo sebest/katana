@@ -1,0 +1,2 @@
+include setup.py katana.py
+recursive-include katana *.py
