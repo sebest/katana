@@ -103,35 +103,18 @@ class Server(object):
 
     def resize(self, values):
         width = values.get('width')
-        if width:
-            width = int(width)
-        else:
-            width = 0
-        if width > self.config['thumb_max_width']:
-            width = self.config['thumb_max_width']
+        width = int(width) if width else 0
+        width = min(width, self.config['thumb_max_width'])
 
         height = values.get('height')
-        if height:
-            height = int(height)
-        else:
-            height = 0
-        if height > self.config['thumb_max_height']:
-            height = self.config['thumb_max_height']
+        height = int(height) if height else 0
+        height = min(height, self.config['thumb_max_height'])
 
         quality = values.get('quality')
-        if quality:
-            quality = int(quality)
-        else:
-            quality = self.config['thumb_default_quality']
-        if quality > self.config['thumb_max_quality']:
-            quality = self.config['thumb_max_quality']
-        elif quality == 0:
-            quality = 1
+        quality = int(quality) if quality else self.config['thumb_default_quality']
+        quality = max(1, min(quality, self.config['thumb_max_quality']))
 
         fit = True if values.get('fit') else False
-
-        if width == height == 0:
-            return None
 
         values.update({
             'width': width,
