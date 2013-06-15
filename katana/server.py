@@ -37,6 +37,7 @@ class Server(object):
     def _get_cache(self, cache):
         if os.path.exists(cache):
             if os.path.getsize(cache):
+                self.ipc.push('CACHE-OUT %s' % cache)
                 return cache
             else:
                 os.unlink(cache)
@@ -49,18 +50,23 @@ class Server(object):
             if exc.errno not in (errno.EEXIST, errno.ENOENT):
                 raise
 
-        with wlock(cache) as (write, cache_fd):
+        with wlock(cache) as (write, exists, cache_fd):
             meta = self.meta.get(cache)
-            if 'expires' in meta:
+            if write and 'expires' in meta:
+                # If we have expires info in meta we check if we need to update (write) or not
                 if time() > (meta['timestamp'] + meta['expires']):
-                    write = True
-            if write or not meta:
-                self.logger.debug('write lock: resolving %s', origin)
+                    self.logger.debug('%s expired', cache)
+                else:
+                    write = False
+                    self.logger.debug('%s not expired', cache)
+            if write:
+                self.logger.debug('resolving %s', origin)
                 info = self.hws.resolve(origin, etag=meta.get('etag'), last_modified=meta.get('last_modified'))
                 if info:
                     url = info['url']
                     if not info['modified']:
                         self.logger.debug('url=%s not modified', url)
+                        self.ipc.push('CACHE-OUT %s' % cache)
                         return cache, self.meta.set(cache, info['headers']), False
                     headers = {'User-Agent': USER_AGENT}
                     if info['host']:
@@ -80,19 +86,20 @@ class Server(object):
                                 break
                             cache_fd.write(chunk)
                         self.logger.debug('fetched %s to %s', url, cache)
+                        self.ipc.push('CACHE-IN %s' % cache)
                         return cache, meta, True
                 else:
                     self.logger.debug('%s not found on origin', cache)
 
             elif self._get_cache(cache):
-                self.logger.debug('read lock: %s found in cache as %s', origin, cache)
+                self.logger.debug('%s found in cache as %s', origin, cache)
                 return cache, meta, False
 
         return None, {}, False
 
     def get_image_resized(self, image_src, cache, width, height, fit, quality, force_update):
-        with wlock(cache) as (write, cache_fd):
-            if write or force_update:
+        with wlock(cache) as (write, exists, cache_fd):
+            if write and (force_update or not exists):
                 if not resize(image_src, cache, width, height, fit, quality):
                     return None
 
@@ -152,12 +159,12 @@ class Server(object):
                     image_dst, meta, modified = getattr(self, action)(match.groupdict())
                     if image_dst:
                         headers = [('Content-Type', 'image/jpeg'), ('X-Response-Time', str(timer)),]
-                        if meta.get('etag'):
+                        if 'etag' in meta:
                             headers.append(('ETag', meta['etag']))
                         elif meta.get('last_modified'):
                             headers.append(('Last-Modified', meta['last_modified']))
                         expires = self.config['external_expires'] or meta.get('expires')
-                        if expires:
+                        if expires and 'timestamp' in meta:
                             timestamp_expires = meta['timestamp'] + expires
                             max_age = timestamp_expires - time()
                             headers.append(('Expires', datetime.utcfromtimestamp(timestamp_expires).strftime("%a, %d %b %Y %H:%M:%S GMT")))
