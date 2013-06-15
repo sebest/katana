@@ -16,7 +16,7 @@ class Meta(object):
 
     def get(self, cache):
         try:
-            with open('%s.meta' % cache, 'r') as cache_meta:
+            with open('%s.META' % cache, 'r') as cache_meta:
                 splitted = cache_meta.read().split('|')
                 if splitted[0] == META_MAGIC:
                     magic, timestamp, expires, last_modified, etag = splitted
@@ -28,7 +28,7 @@ class Meta(object):
                     }
                 else:
                     self.logger.error('Meta.get wrong magic [%s] for %s', splitted[0], cache)
-                    os.remove('%s.meta' % cache)
+                    os.remove('%s.META' % cache)
         except (IOError, OSError) as exc:
             if exc.errno != errno.ENOENT:
                 self.logger.error('Meta.get failed for %s: %s', cache, exc)
@@ -36,7 +36,7 @@ class Meta(object):
 
     def set(self, cache, headers):
         try:
-            with open('%s.meta' % cache, 'w') as cache_meta:
+            with open('%s.META' % cache, 'w') as cache_meta:
                 timestamp = int(time())
                 etag = headers.get('etag', '')
                 last_modified = headers.get('last-modified', '')
