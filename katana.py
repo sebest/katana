@@ -3,6 +3,7 @@ def main():
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--clean', help='start the cleaner process', action='store_true')
+    group.add_argument('--init', help='init the cleaner process', action='store_true')
     group.add_argument('--dump', help='print the configuration', action='store_true')
     group.add_argument('--start', help='start the server', action='store_true')
     args = parser.parse_args()
@@ -16,6 +17,13 @@ def main():
         from katana.cleaner import Cleaner
         try:
             Cleaner().start()
+        except KeyboardInterrupt:
+            pass
+
+    elif args.init:
+        from katana.cleaner import Cleaner
+        try:
+            Cleaner().init()
         except KeyboardInterrupt:
             pass
 

@@ -1,5 +1,8 @@
 DEFAULT_CONFIG = {
     'ipc_sock_path': '/tmp/katana.sock',
+    'cleaner_db_path': '/tmp/katana_cleaner.db',
+    'clean_batch_size': 100,
+    'clean_every': 60,
     'proxy': None,
     'accel_redirect': False,
     'accel_redirect_path': '/resized',
@@ -25,9 +28,6 @@ DEFAULT_CONFIG = {
     'external_expires': 600,
     'cache_dir': './data',
     'cache_dir_max_usage': 90,
-    'clean_older_than': 24,
-    'clean_every': 4,
-    'clean_dry': False,
     'logging': {'version': 1},
 }
 
