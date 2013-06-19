@@ -22,8 +22,7 @@ class Cleaner(object):
         self.con.execute('pragma journal_mode=OFF')
         self.con.execute('CREATE TABLE IF NOT EXISTS cache (path text PRIMARY KEY NOT NULL, accessed integer)')
 
-        self.ipc_push = IPC(self.config['ipc_sock_path'], 'push')
-        self.ipc_pull = IPC(self.config['ipc_sock_path'], 'pull')
+        self.ipc = IPC(self.config['ipc_sock_path'])
 
     def init(self):
         '''Walks in cache_dir to initialize the content of the cache.
@@ -53,10 +52,10 @@ class Cleaner(object):
         while True:
             now = time()
             if last_run + self.config['clean_every'] < now:
-                self.ipc_push.push('CLEANING START')
+                self.ipc.push('CLEANING START')
                 last_run = now
 
-            msg = self.ipc_pull.pull()
+            msg = self.ipc.pull()
             self.logger.debug(msg)
             # TODO: commit every X path
             if msg == 'CLEANING START':
@@ -132,11 +131,11 @@ class Cleaner(object):
             for result in query:
                 nb_clean -= 1
                 path = str(result[0])
-                self.ipc_push.push('DELETE %s' % path)
-            self.ipc_push.push('CLEANING STOP')
+                self.ipc.push('DELETE %s' % path)
+            self.ipc.push('CLEANING STOP')
             if not nb_clean:
-                self.ipc_push.push('CLEANING START')
+                self.ipc.push('CLEANING START')
             else:
                 self.logger.error('cleaner process ending: no more file to delete')
         elif self.cleaning:
-            self.ipc_push.push('CLEANING STOP')
+            self.ipc.push('CLEANING STOP')

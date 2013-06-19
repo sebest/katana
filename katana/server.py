@@ -28,7 +28,7 @@ class Server(object):
         self.logger = logging.getLogger('katana.server')
 
         self.meta = Meta()
-        self.ipc = IPC(self.config['ipc_sock_path'], 'push')
+        self.ipc = IPC(self.config['ipc_sock_path'])
 
         self.hws = HttpWhoHas(proxy=self.config['proxy'], timeout=self.config['origin_timeout'], user_agent=USER_AGENT)
         for name, conf in self.config['origin_mapping'].items():

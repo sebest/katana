@@ -6,23 +6,23 @@ class IPCSockPathError(Exception): pass
 
 class IPC(object):
 
-    def __init__(self, sock_path, mode):
+    def __init__(self, sock_path):
         self.sock_path = sock_path
         self.ctx = zmq.Context()
-        if mode == 'push':
-            self.sock = self.ctx.socket(zmq.PUSH)
-            self.sock.connect("ipc://%s" % self.sock_path)
-        elif mode == 'pull':
-            self.sock = self.ctx.socket(zmq.PULL)
-            self.sock.bind("ipc://%s" % self.sock_path)
-        else:
-            raise IPCInvalidMode('%s is not a valid mode, use pull or pull' % mode)       
+        self.sock_push = None
+        self.sock_pull = None
 
     def push(self, msg):
-        self.sock.send(msg)
+        if not self.sock_push:
+            self.sock_push = self.ctx.socket(zmq.PUSH)
+            self.sock_push.connect("ipc://%s" % self.sock_path)
+        self.sock_push.send(msg)
 
     def pull(self):
-        return self.sock.recv()
+        if not self.sock_pull:
+            self.sock_pull = self.ctx.socket(zmq.PULL)
+            self.sock_pull.bind("ipc://%s" % self.sock_path)
+        return self.sock_pull.recv()
 
 if __name__ == '__main__':
     import sys
@@ -30,11 +30,11 @@ if __name__ == '__main__':
     sock_path = sys.argv[1]
     mode = sys.argv[2]
     if mode == 'push':
-        i = IPC(sock_path, mode)
+        i = IPC(sock_path)
         while True:
             i.push('hello')
             sleep(0.1)
     elif mode == 'pull':
-        i = IPC(sock_path, mode)
+        i = IPC(sock_path)
         while True:
             print i.pull()
