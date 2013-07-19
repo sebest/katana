@@ -1,11 +1,29 @@
+import argparse
+import re
+
+def type_ip_port(string):
+    msg = None
+    ip, port = string.split(':')
+    if not re.match("(^[2][0-5][0-5]|^[1]{0,1}[0-9]{1,2})\.([0-2][0-5][0-5]|[1]{0,1}[0-9]{1,2})\.([0-2][0-5][0-5]|[1]{0,1}[0-9]{1,2})\.([0-2][0-5][0-5]|[1]{0,1}[0-9]{1,2})$", ip):
+        msg = '%s is not a valid ip address' % ip
+    try:
+        port = int(port)
+    except ValueError:
+        msg = '%s is not a valid port number' % port
+    if port < 0 or port > 65535:
+        msg = '%s is not a valid port number' % port
+    if msg:
+        raise argparse.ArgumentTypeError(msg)
+    return ip, int(port)
+
 def main():
-    import argparse
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--clean', help='start the cleaner process', action='store_true')
     group.add_argument('--init', help='init the cleaner process', action='store_true')
     group.add_argument('--dump', help='print the configuration', action='store_true')
-    group.add_argument('--start', help='start the server', action='store_true')
+    group.add_argument('--start', help='start the server', default='0.0.0.0:8080', 
+                       metavar='IP:PORT', type=type_ip_port)
     args = parser.parse_args()
 
     if args.dump:
@@ -15,22 +33,21 @@ def main():
 
     elif args.clean:
         from katana.cleaner import Cleaner
-        try:
-            Cleaner().start()
-        except KeyboardInterrupt:
-            pass
+        Cleaner().start()
 
     elif args.init:
         from katana.cleaner import Cleaner
-        try:
-            Cleaner().init()
-        except KeyboardInterrupt:
-            pass
+        Cleaner().init()
 
     elif args.start:
+        ip, port = args.start
         from gevent.pywsgi import WSGIServer
         from katana.server import Server
-        WSGIServer(('', 8088), Server().app).serve_forever()
+        print 'listening on %s:%s' % (ip, port)
+        WSGIServer((ip, port), Server().app).serve_forever()
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass
