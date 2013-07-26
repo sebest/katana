@@ -7,7 +7,9 @@ setup(
     version=__version__,
     author='Sebastien Estienne',
     author_email='sebastien.estienne@gmail.com',
-    url='-',
+    url='http://github.com/sebest/katana',
     py_modules=['katana'],
-    install_requires=['gevent', 'gunicorn', 'PIL'],
+    scripts = ['katana.py',],
+    data_files = [('/etc/katana', ['katana.conf.sample']),],
+    requires=['gevent', 'gunicorn', 'PIL', 'zmq', ],
     )
