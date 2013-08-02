@@ -6,7 +6,7 @@ import errno
 import urllib2
 import logging
 import logging.config
-from time import time
+from time import time, strptime, mktime
 from datetime import datetime
 
 from . import __version__
@@ -20,6 +20,8 @@ from .ipc import IPC
 
 USER_AGENT = 'Katana/%s' % __version__
 
+def date_to_ts(date):
+    return mktime(strptime(date, "%a, %d %b %Y %H:%M:%S %Z"))
 
 class Server(object):
 
@@ -155,6 +157,13 @@ class Server(object):
             start_response('405 Invalid Method', [])
             return []
 
+        client_etag = environ.get('HTTP_IF_NONE_MATCH')
+        client_modified_ts = None
+        if not client_etag and environ.get('HTTP_IF_MODIFIED_SINCE'):
+            client_modified_ts = date_to_ts(environ['HTTP_IF_MODIFIED_SINCE'])
+
+        self.logger.debug('client check modified etag=%s modified=%s', client_etag, client_modified_ts)
+
         image_dst = None
         for action in ('resize', 'proxy'):
             regex = self.config['%s_url_re' % action]
@@ -163,18 +172,24 @@ class Server(object):
                 if match:
                     image_dst, meta, modified = getattr(self, action)(match.groupdict())
                     if image_dst:
+                        client_not_modified = False
                         headers = [('Content-Type', 'image/jpeg'), ('X-Response-Time', str(timer)),]
-                        if meta.get('etag'):
+                        if meta.get('etag') and not client_modified_ts:
                             headers.append(('ETag', meta['etag']))
+                            client_not_modified = client_etag == meta['etag']
                         elif meta.get('last_modified'):
                             headers.append(('Last-Modified', meta['last_modified']))
+                            client_not_modified = date_to_ts(meta['last_modified']) <= client_modified_ts
                         expires = self.config['external_expires'] or meta.get('expires')
                         if expires and 'timestamp' in meta:
                             timestamp_expires = meta['timestamp'] + expires
                             max_age = timestamp_expires - time()
                             headers.append(('Expires', datetime.utcfromtimestamp(timestamp_expires).strftime("%a, %d %b %Y %H:%M:%S GMT")))
                             headers.append(('Cache-Control', 'max-age=%d' % max_age))
-                        if self.config['accel_redirect']:
+                        if client_not_modified:
+                            start_response('304 Not Modified', headers)
+                            return []
+                        elif self.config['accel_redirect']:
                             accel_redirect = self.config['accel_redirect_path'] + image_dst[len(self.config['cache_dir']):]
                             headers.append(('X-Accel-Redirect', accel_redirect))
                             start_response('200 OK', headers)
