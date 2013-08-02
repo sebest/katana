@@ -1,3 +1,5 @@
+__all__ = ['HttpWhoHas']
+
 from gevent import monkey; monkey.patch_all()
 
 import gevent
@@ -17,8 +19,24 @@ class DefaultErrorHandler(urllib2.HTTPDefaultErrorHandler):
 
 
 class HttpWhoHas(object):
+    """Finds the HTTP server that store a specific file from a list of HTTP servers.
+
+    This object allow to defines clusters of nodes, each nodes of the cluster should have
+    the same data.
+
+    The resole process will try to find a node in a cluster storing a specific file and
+    will return the full url to the filename.
+    """
 
     def __init__(self, per_cluster=3, user_agent='HttpWhoHas.py', proxy=None, timeout=5):
+        """Initializes the resolver.
+
+        Args:
+            per_cluster (int): number of node to query from the same cluster.
+            user_agent (str): the user agent that will be used for queries.
+            proxy (str): a proxy server with IP/HOST:PORT format (eg: '127.0.0.1:8888').
+            timeout (int): timeout of the queries.
+        """
         self.clusters = {}
         self.per_cluster = per_cluster
         self.user_agent = user_agent
@@ -32,6 +50,16 @@ class HttpWhoHas(object):
         self.logger = logging.getLogger('httpwhohas')
 
     def set_cluster(self, name, ips, headers=None):
+        """Adds a new cluster in the resolver.
+
+        Args:
+            name (str): the name of the cluster.
+            ips (list): a list of ips of nodes in this cluster.
+            headers (dict): a dict of headers that will be passed to every queries.
+
+        Returns:
+            None
+        """
         self.clusters[name] = {
             'ips': ips,
             'headers': headers if headers else {},
@@ -68,6 +96,23 @@ class HttpWhoHas(object):
         gevent.killall(jobs)
 
     def resolve(self, filename, etag=None, last_modified=None):
+        """Resolves a filename on the clusters.
+
+        Args:
+            filename (str): the filename that we are looking for on the clusters.
+            etag (str): the etag to user for the query if any.
+            last_modified (str): the date in the same format as returned by Last-Modified.
+
+        Returns:
+            A dict if the filename was found otherwise None.
+
+            The dict has the following keys:
+             * filer (str): the name of the cluster.
+             * url (str): the full url of the filename.
+             * host (str): the value of the Host header.
+             * modified (bool): True if the file has been modified since the previous request.
+             * headers (dict): the HTTP response headers.
+        """
         self.logger.debug('resolving %s', filename)
         res = Queue()
         reqs = []

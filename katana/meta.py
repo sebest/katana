@@ -1,11 +1,11 @@
+__all__ = ['Meta']
+
 import re
 import os
 import errno
 import logging
 from time import time
 from .config import get_config
-
-__all__ = ['Meta']
 
 
 class Meta(object):
