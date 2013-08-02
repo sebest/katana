@@ -67,7 +67,12 @@ class Server(object):
                     if not info['modified']:
                         self.logger.debug('url=%s not modified', url)
                         self.ipc.push('CACHE-OUT %s' % cache)
-                        return cache, self.meta.set(cache, info['headers']), False
+                        headers = {
+                            'etag': meta.get('etag'),
+                            'last-modified': meta.get('last_modified'),
+                            'cache-control': info['headers'].get('cache-control'),
+                            }
+                        return cache, self.meta.set(cache, headers), False
                     headers = {'User-Agent': USER_AGENT}
                     if info['host']:
                         headers['Host'] = info['host']
@@ -167,7 +172,6 @@ class Server(object):
                         if expires and 'timestamp' in meta:
                             timestamp_expires = meta['timestamp'] + expires
                             max_age = timestamp_expires - time()
-                            # TODO choose one or the other
                             headers.append(('Expires', datetime.utcfromtimestamp(timestamp_expires).strftime("%a, %d %b %Y %H:%M:%S GMT")))
                             headers.append(('Cache-Control', 'max-age=%d' % max_age))
                         if self.config['accel_redirect']:
