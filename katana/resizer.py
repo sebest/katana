@@ -3,7 +3,7 @@ import PIL
 from PIL import Image, ImageOps
 from math import ceil, fabs
 
-logger = logging.getLogger('resizer')
+logger = logging.getLogger('katana.resizer')
 
 def resize(src, dst, width=0, height=0, fit=True, quality=75):
 

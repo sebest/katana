@@ -47,7 +47,7 @@ class HttpWhoHas(object):
 
         urllib2.install_opener(urllib2.build_opener(DefaultErrorHandler()))
 
-        self.logger = logging.getLogger('httpwhohas')
+        self.logger = logging.getLogger('katana.httpwhohas')
 
     def set_cluster(self, name, ips, headers=None):
         """Adds a new cluster in the resolver.

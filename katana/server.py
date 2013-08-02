@@ -102,9 +102,13 @@ class Server(object):
                 self.logger.debug('%s found in cache as %s', origin, cache)
                 return cache, meta, False
 
-        return None, {}, False
+        cache = self.config['not_found_source'] if self.config['not_found_as_200'] else None
+        return cache, {}, False
 
     def get_image_resized(self, image_src, cache, width, height, fit, quality, force_update):
+        if not image_src:
+            return None
+
         with wlock(cache) as (write, exists, cache_fd):
             if write and (force_update or not exists):
                 if not resize(image_src, cache, width, height, fit, quality):
@@ -138,12 +142,12 @@ class Server(object):
             })
 
         origin = self.config['resize_origin'].format(**values)
-        cache = '%s%s' % (self.config['cache_dir'], self.config['resize_cache_path_source'].format(**values))
-        image_src, meta, modified = self.get_file(origin, cache)
-        if image_src:
-            cache = '%s%s' % (self.config['cache_dir'], self.config['resize_cache_path_resized'].format(**values))
-            return self.get_image_resized(image_src, cache, width, height, fit, quality, modified), meta, modified
-        return None, meta, modified
+        cache_source = '%s%s' % (self.config['cache_dir'], self.config['resize_cache_path_source'].format(**values))
+        image_src, meta, modified = self.get_file(origin, cache_source)
+
+        cache_resized = '%s%s' % (self.config['cache_dir'], self.config['resize_cache_path_resized'].format(**values))
+        image_resized = self.get_image_resized(image_src, cache_resized, width, height, fit, quality, modified)
+        return image_resized, meta, modified
 
     def proxy(self, values):
         origin = self.config['proxy_origin'].format(**values)
@@ -153,7 +157,8 @@ class Server(object):
     def app(self, environ, start_response):
         timer = Timer()
 
-        if environ['REQUEST_METHOD'] not in ('GET', 'HEAD'):
+        request_method = environ['REQUEST_METHOD']
+        if request_method not in ('GET', 'HEAD'):
             start_response('405 Invalid Method', [])
             return []
 
@@ -181,9 +186,10 @@ class Server(object):
                             headers.append(('Last-Modified', meta['last_modified']))
                             client_not_modified = date_to_ts(meta['last_modified']) <= client_modified_ts
                         expires = self.config['external_expires'] or meta.get('expires')
-                        if expires and 'timestamp' in meta:
-                            timestamp_expires = meta['timestamp'] + expires
-                            max_age = timestamp_expires - time()
+                        if expires:
+                            now = time()
+                            timestamp_expires = meta.get('timestamp', now) + expires
+                            max_age = timestamp_expires - now
                             headers.append(('Expires', datetime.utcfromtimestamp(timestamp_expires).strftime("%a, %d %b %Y %H:%M:%S GMT")))
                             headers.append(('Cache-Control', 'max-age=%d' % max_age))
                         if client_not_modified:
@@ -191,11 +197,14 @@ class Server(object):
                             return []
                         elif self.config['accel_redirect']:
                             accel_redirect = self.config['accel_redirect_path'] + image_dst[len(self.config['cache_dir']):]
-                            headers.append(('X-Accel-Redirect', accel_redirect))
+                            if request_method == 'GET':
+                                headers.append(('X-Accel-Redirect', accel_redirect))
                             start_response('200 OK', headers)
                             return []
                         else:
                             start_response('200 OK', headers)
+                            if request_method == 'HEAD':
+                                return []
                             image = open(image_dst, 'rb')
                             try:
                                 return environ['wsgi.file_wrapper'](image, self.config['chunk_size'])
