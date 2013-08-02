@@ -37,6 +37,9 @@ class Meta(object):
     def set(self, cache, headers):
         try:
             with open('%s.META' % cache, 'w') as cache_meta:
+                # TODO check missing Last-Modified with if modified since / etag when expired
+                # TODO handle etag last modified with resized files
+                # TODO check If-None-Match: 
                 timestamp = int(time())
                 etag = headers.get('etag', '')
                 last_modified = headers.get('last-modified', '')

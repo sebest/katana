@@ -159,7 +159,7 @@ class Server(object):
                     image_dst, meta, modified = getattr(self, action)(match.groupdict())
                     if image_dst:
                         headers = [('Content-Type', 'image/jpeg'), ('X-Response-Time', str(timer)),]
-                        if 'etag' in meta:
+                        if meta.get('etag'):
                             headers.append(('ETag', meta['etag']))
                         elif meta.get('last_modified'):
                             headers.append(('Last-Modified', meta['last_modified']))
@@ -167,6 +167,7 @@ class Server(object):
                         if expires and 'timestamp' in meta:
                             timestamp_expires = meta['timestamp'] + expires
                             max_age = timestamp_expires - time()
+                            # TODO choose one or the other
                             headers.append(('Expires', datetime.utcfromtimestamp(timestamp_expires).strftime("%a, %d %b %Y %H:%M:%S GMT")))
                             headers.append(('Cache-Control', 'max-age=%d' % max_age))
                         if self.config['accel_redirect']:
