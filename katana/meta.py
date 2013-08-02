@@ -20,9 +20,10 @@ class Meta(object):
                 splitted = cache_meta.read().split('|')
                 if splitted[0] == META_MAGIC:
                     magic, timestamp, expires, last_modified, etag = splitted
+                    expires = self.config['cache_default_expires'] if self.config['cache_force_expires'] else int(expires)
                     return {
                         'timestamp': int(timestamp),
-                        'expires': int(expires),
+                        'expires': expires,
                         'last_modified': last_modified,
                         'etag': etag,
                     }
@@ -44,10 +45,9 @@ class Meta(object):
                 etag = headers.get('etag', '')
                 last_modified = headers.get('last-modified', '')
                 expires = self.config['cache_default_expires']
-                if not self.config['cache_force_expires']:
-                    m = re.match('.*max-age=(\d+).*', headers.get('cache-control', ''))
-                    if m:
-                        expires = int(m.group(1))
+                m = re.match('.*max-age=(\d+).*', headers.get('cache-control', ''))
+                if m:
+                    expires = int(m.group(1))
                 cache_meta.write('%s|%s|%s|%s|%s' % (META_MAGIC, timestamp, expires, last_modified, etag))
                 return {
                     'timestamp': timestamp,
