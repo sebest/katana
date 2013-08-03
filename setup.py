@@ -2,6 +2,8 @@ from distutils.core import setup
 
 from katana import __version__
 
+REQUIREMENTS = [i.strip() for i in open("requirements.txt").readlines()]
+
 setup(
     name='katana',
     version=__version__,
@@ -11,5 +13,5 @@ setup(
     py_modules=['katana'],
     scripts = ['katana.py',],
     data_files = [('/etc/katana', ['katana.conf.sample']),],
-    requires=['gevent', 'gunicorn', 'PIL', 'zmq', ],
+    install_requires=REQUIREMENTS,
     )
