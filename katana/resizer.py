@@ -29,5 +29,11 @@ def resize(src, dst, width=0, height=0, fit=True, quality=75):
     else:
         img = img.copy()
         img.thumbnail((width, height), Image.ANTIALIAS)
-    img.save(dst, quality=quality)
+    try:
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        img.save(dst, quality=quality)
+    except IOError as e:
+        logger.error('error saving %s to %s: %s', src, dst, e)
+        return False
     return True
