@@ -1,8 +1,9 @@
 from distutils.core import setup
+from pip.req import parse_requirements
 
 from katana import __version__
 
-REQUIREMENTS = [i.strip() for i in open("requirements.txt").readlines()]
+install_reqs = parse_requirements("requirements.txt")
 
 setup(
     name='katana',
@@ -13,5 +14,5 @@ setup(
     py_modules=['katana'],
     scripts = ['katana.py',],
     data_files = [('/etc/katana', ['katana.conf.sample']),],
-    install_requires=REQUIREMENTS,
+    install_requires=[str(ir.req) for ir in install_reqs],
     )
