@@ -185,7 +185,7 @@ class Server(object):
                         elif meta.get('last_modified'):
                             headers.append(('Last-Modified', meta['last_modified']))
                             client_not_modified = date_to_ts(meta['last_modified']) <= client_modified_ts
-                        expires = self.config['external_expires'] or meta.get('expires')
+                        expires = max(self.config['external_expires'],  meta.get('expires', 0))
                         if expires:
                             now = time()
                             timestamp_expires = meta.get('timestamp', now) + expires

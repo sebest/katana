@@ -43,9 +43,6 @@ def get_config(config_file='katana.conf'):
     if os.path.exists(config_file):
         execfile(config_file, {}, config)
 
-    if config['cache_force_expires']:
-        config['external_expires'] = max(config['external_expires'], config['cache_default_expires'])
-
     logging.config.dictConfig(config['logging'])
 
     return config
