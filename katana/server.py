@@ -56,7 +56,10 @@ class Server(object):
             meta = self.meta.get(cache)
             if write and 'expires' in meta:
                 # If we have expires info in meta we check if we need to update (write) or not
-                if time() > (meta['timestamp'] + meta['expires']):
+                expires = meta['expires']
+                if isinstance(self.config['external_expires'], int):
+                    expires = min(self.config['external_expires'], expires)
+                if time() > (meta['timestamp'] + expires):
                     self.logger.debug('%s expired', cache)
                 else:
                     write = False
@@ -185,7 +188,9 @@ class Server(object):
                         elif meta.get('last_modified'):
                             headers.append(('Last-Modified', meta['last_modified']))
                             client_not_modified = date_to_ts(meta['last_modified']) <= client_modified_ts
-                        expires = max(self.config['external_expires'],  meta.get('expires', 0))
+                        expires = meta.get('expires', 0)
+                        if isinstance(self.config['external_expires'], int):
+                            expires = max(self.config['external_expires'],  expires)
                         if expires:
                             now = time()
                             timestamp_expires = meta.get('timestamp', now) + expires
