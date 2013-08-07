@@ -40,8 +40,10 @@ from copy import deepcopy
 def get_config(config_file='katana.conf'):
     config = deepcopy(DEFAULT_CONFIG)
     config_file = os.environ.get('CONFIG_FILE', config_file)
-    if os.path.exists(config_file):
-        execfile(config_file, {}, config)
+    for config_file in [config_file, '/etc/katana/katana.conf']:
+        if os.path.exists(config_file):
+            execfile(config_file, {}, config)
+            break
 
     logging.config.dictConfig(config['logging'])
 
