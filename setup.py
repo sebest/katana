@@ -11,8 +11,8 @@ setup(
     author='Sebastien Estienne',
     author_email='sebastien.estienne@gmail.com',
     url='http://github.com/sebest/katana',
-    py_modules=['katana'],
-    scripts = ['katana.py',],
+    packages=['katana'],
+    scripts = ['scripts/katana',],
     data_files = [('/etc/katana', ['katana.conf.sample']),],
     install_requires=[str(ir.req) for ir in install_reqs],
     )
