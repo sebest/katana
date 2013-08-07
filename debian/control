@@ -1,0 +1,12 @@
+Source: katana
+Maintainer: Sebastien Estienne <sebastien.estienne@gmail.com>
+Section: python
+Priority: optional
+Build-Depends: python-all (>= 2.6.6-3), debhelper (>= 7.4.3), python-setuptools
+Standards-Version: 3.9.1
+
+Package: katana
+Architecture: all
+Depends: ${misc:Depends}, ${python:Depends}, python-gevent, python-requests, python-imaging, python-zmq
+Description: Katana is HTTP caching proxy with dynamic image resizing capabiliy.
+

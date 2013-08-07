@@ -1,4 +1,4 @@
-from distutils.core import setup
+from setuptools import setup
 from pip.req import parse_requirements
 
 from katana import __version__

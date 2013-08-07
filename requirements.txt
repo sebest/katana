@@ -1,3 +1,4 @@
+requests
 PIL
 pyzmq
  -e git://github.com/surfly/gevent.git@1.0rc2#egg=gevent
