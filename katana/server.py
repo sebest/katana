@@ -5,7 +5,6 @@ import re
 import errno
 import urllib2
 import logging
-import logging.config
 from time import time, strptime, mktime
 from datetime import datetime
 
