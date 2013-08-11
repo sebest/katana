@@ -15,3 +15,4 @@ Features
 - Configurable logging and debugging
 - X-accel feature to put nginx in front of Katana
 - Can return (resized) image on 404 not found
+- Can work with Gunicorn or standalone
