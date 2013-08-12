@@ -9,8 +9,6 @@ from time import time
 from .config import get_config
 from .ipc import IPC
 
-CLEANER_LOCK = 'cleaner.lock'
-
 class Cleaner(object):
     def __init__(self):
         self.config = get_config()
@@ -27,9 +25,12 @@ class Cleaner(object):
     def init(self):
         '''Walks in cache_dir to initialize the content of the cache.
         '''
+        # TODO find a better solution not to index not_found_source and cleaner_db
+        cleaner_db = os.path.basename(self.config['cleaner_db_path'])
+        not_found_source = os.path.basename(self.config['not_found_source'])
         for dirpath, dirnames, filenames in os.walk(self.config['cache_dir']):
             for filename in filenames:
-                if filename == CLEANER_LOCK or filename.endswith('.META'):
+                if filename.endswith('.META') or filename in (cleaner_db, not_found_source):
                     continue
                 path = unicode('%s/%s' % (os.path.abspath(dirpath), filename), 'utf8')
                 accessed = int(os.path.getatime(path))
@@ -122,10 +123,11 @@ class Cleaner(object):
     def clean(self):
         '''Starts the cleaning process, removing the oldest files until the disk usage is below cache_dir_max_usage.
         '''
-        self.logger.info('cleaner process starting')
         st = os.statvfs(self.config['cache_dir'])
         disk_usage = (st.f_blocks - st.f_bfree) / float(st.f_blocks) * 100
-        if disk_usage > self.config['cache_dir_max_usage']:
+        file_usage = ( st.f_files - st.f_ffree) / float(st.f_files) * 100
+        self.logger.info('cleaner process starting: Disk space %d%% / Files %d%%', disk_usage, file_usage)
+        if max(disk_usage, file_usage) > self.config['cache_dir_max_usage']:
             nb_clean = self.config['clean_batch_size']
             query = self.con.execute('SELECT path FROM cache ORDER BY accessed ASC LIMIT ?', (nb_clean,))
             for result in query:
