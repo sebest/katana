@@ -76,7 +76,7 @@ class Server(object):
                             'last-modified': meta.get('last_modified'),
                             'cache-control': info['headers'].get('cache-control'),
                             }
-                        return cache, self.meta.set(cache, headers), False
+                        return cache, self.meta.set(cache, headers)
                     headers = {'User-Agent': USER_AGENT}
                     if info['host']:
                         headers['Host'] = info['host']
@@ -96,30 +96,33 @@ class Server(object):
                             cache_fd.write(chunk)
                         self.logger.debug('fetched %s to %s', url, cache)
                         self.ipc.push('CACHE-IN %s' % cache)
-                        return cache, meta, True
+                        return cache, meta
                 else:
                     self.logger.debug('%s not found on origin', cache)
 
             elif self._get_cache(cache):
                 self.logger.debug('%s found in cache as %s', origin, cache)
-                return cache, meta, False
+                return cache, meta
 
-        cache = self.config['not_found_source'] if self.config['not_found_as_200'] else None
-        return cache, {}, False
+        return None, {}
 
-    def get_image_resized(self, image_src, cache, width, height, fit, quality, force_update):
-        if not image_src:
-            return None
+    def get_image_resized(self, image_src, cache, width, height, fit, quality, meta_src):
+        if not image_src and not self.config['not_found_as_200']:
+            return None, {}
 
         with wlock(cache) as (write, exists, cache_fd):
-            if write and (force_update or not exists):
+            if image_src and write and (not exists or self.meta.get(cache) != meta_src):
                 if not resize(image_src, cache, width, height, fit, quality):
-                    return None
+                    return None, {}
+                self.meta.copy(image_src, cache)
+            elif write and not exists:
+                if not resize(self.config['not_found_source'], cache, width, height, fit, quality):
+                    return None, {}
 
             if self._get_cache(cache):
-                return cache
+                return cache, meta_src
 
-        return None
+        return None, {}
 
     def resize(self, values):
         width = values.get('width')
@@ -145,16 +148,19 @@ class Server(object):
 
         origin = self.config['resize_origin'].format(**values)
         cache_source = '%s%s' % (self.config['cache_dir'], self.config['resize_cache_path_source'].format(**values))
-        image_src, meta, modified = self.get_file(origin, cache_source)
+        image_src, meta = self.get_file(origin, cache_source)
 
         cache_resized = '%s%s' % (self.config['cache_dir'], self.config['resize_cache_path_resized'].format(**values))
-        image_resized = self.get_image_resized(image_src, cache_resized, width, height, fit, quality, modified)
-        return image_resized, meta, modified
+        image_resized, meta = self.get_image_resized(image_src, cache_resized, width, height, fit, quality, meta)
+        return image_resized, meta
 
     def proxy(self, values):
         origin = self.config['proxy_origin'].format(**values)
         cache = '%s%s' % (self.config['cache_dir'], self.config['proxy_cache_path'].format(**values))
-        return self.get_file(origin, cache)
+        image, meta = self.get_file(origin, cache)
+        if not image and self.config['not_found_as_200']:
+            image = self.config['not_found_source']
+        return image, meta
 
     def app(self, environ, start_response):
         timer = Timer()
@@ -177,7 +183,7 @@ class Server(object):
             if regex:
                 match = re.match(regex, environ['PATH_INFO'])
                 if match:
-                    image_dst, meta, modified = getattr(self, action)(match.groupdict())
+                    image_dst, meta = getattr(self, action)(match.groupdict())
                     if image_dst:
                         client_not_modified = False
                         headers = [('Content-Type', 'image/jpeg'), ('X-Response-Time', str(timer)),]

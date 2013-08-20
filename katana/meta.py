@@ -5,6 +5,7 @@ import os
 import errno
 import logging
 from time import time
+from shutil import copy
 from .config import get_config
 
 
@@ -108,3 +109,9 @@ class Meta(object):
         except (IOError, OSError) as exc:
             self.logger.error('Meta.set failed for %s: %s', cache, exc)
         return {}
+
+    def copy(self, src, dst):
+        try:
+            copy('%s.META' % src, '%s.META' % dst)
+        except (IOError, OSError) as exc:
+            self.logger.error('Meta.copy from %s to %s failed: %s', src, dst, exc)
