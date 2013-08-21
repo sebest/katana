@@ -1,3 +1,9 @@
+katana (1.1-0~precise1) precise-dc; urgency=low
+
+  * Bugfix release
+
+ -- Sebastien Estienne <sebastien.estienne@gmail.com>  Wed, 21 Aug 2013 02:09:41 +0200
+
 katana (1.0-5~precise1ubuntu1) precise-dc; urgency=low
 
   * bug fix release
