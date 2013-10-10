@@ -190,7 +190,7 @@ class Server(object):
                         if meta.get('etag') and not client_modified_ts:
                             headers.append(('ETag', meta['etag']))
                             client_not_modified = client_etag == meta['etag']
-                        elif meta.get('last_modified'):
+                        if meta.get('last_modified'):
                             headers.append(('Last-Modified', meta['last_modified']))
                             client_not_modified = date_to_ts(meta['last_modified']) <= client_modified_ts
                         expires = meta.get('expires', 0)
