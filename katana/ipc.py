@@ -15,12 +15,14 @@ class IPC(object):
     def push(self, msg):
         if not self.sock_push:
             self.sock_push = self.ctx.socket(zmq.PUSH)
+            self.sock_push.set_hwm(0)
             self.sock_push.connect("ipc://%s" % self.sock_path)
         self.sock_push.send(msg)
 
     def pull(self):
         if not self.sock_pull:
             self.sock_pull = self.ctx.socket(zmq.PULL)
+            self.sock_pull.set_hwm(0)
             self.sock_pull.bind("ipc://%s" % self.sock_path)
         return self.sock_pull.recv()
 
