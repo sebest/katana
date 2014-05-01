@@ -171,9 +171,10 @@ class Server(object):
             return []
 
         client_etag = environ.get('HTTP_IF_NONE_MATCH')
-        client_modified_ts = None
-        if not client_etag and environ.get('HTTP_IF_MODIFIED_SINCE'):
+        if environ.get('HTTP_IF_MODIFIED_SINCE'):
             client_modified_ts = date_to_ts(environ['HTTP_IF_MODIFIED_SINCE'])
+        else:
+            client_modified_ts = None
 
         self.logger.debug('client check modified etag=%s modified=%s', client_etag, client_modified_ts)
 
@@ -185,14 +186,18 @@ class Server(object):
                 if match:
                     image_dst, meta = getattr(self, action)(match.groupdict())
                     if image_dst:
-                        client_not_modified = False
                         headers = [('Content-Type', 'image/jpeg'), ('X-Response-Time', str(timer)),]
-                        if meta.get('etag') and not client_modified_ts:
+
+                        client_not_modified = False
+                        if meta.get('etag'):
                             headers.append(('ETag', meta['etag']))
-                            client_not_modified = client_etag == meta['etag']
+                            if client_etag:
+                                client_not_modified = client_etag == meta['etag']
                         if meta.get('last_modified'):
                             headers.append(('Last-Modified', meta['last_modified']))
-                            client_not_modified = date_to_ts(meta['last_modified']) <= client_modified_ts
+                            if not client_not_modified and client_modified_ts:
+                                client_not_modified = date_to_ts(meta['last_modified']) <= client_modified_ts
+
                         expires = meta.get('expires', 0)
                         if isinstance(self.config['external_expires'], int):
                             expires = max(self.config['external_expires'],  expires)
@@ -224,4 +229,3 @@ class Server(object):
 
         start_response('404 Not Found', [('X-Response-Time', str(timer))])
         return []
-
