@@ -1,9 +1,6 @@
 from setuptools import setup
-from pip.req import parse_requirements
 
 from katana import __version__
-
-install_reqs = parse_requirements("requirements.txt")
 
 setup(
     name='katana',
@@ -14,5 +11,10 @@ setup(
     packages=['katana'],
     scripts = ['scripts/katana',],
     data_files = [('/etc/katana', ['katana.conf.sample']),],
-    install_requires=[str(ir.req) for ir in install_reqs],
+    install_requires=[
+        'Pillow',
+        'gevent',
+        'pyzmq',
+        'requests',
+    ],
     )
