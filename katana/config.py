@@ -30,7 +30,7 @@ DEFAULT_CONFIG = {
     'cache_dir_max_usage': 90,
     'logging': {'version': 1},
     'not_found_as_200': False,
-    'not_found_source': './404.jpeg',
+    'not_found_source': './data/404.jpeg',
 }
 
 import os
