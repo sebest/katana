@@ -15,6 +15,5 @@ setup(
         'Pillow',
         'gevent',
         'pyzmq',
-        'requests',
     ],
     )

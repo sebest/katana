@@ -7,6 +7,6 @@ Standards-Version: 3.9.1
 
 Package: katana
 Architecture: all
-Depends: ${misc:Depends}, ${python:Depends}, python-gevent, python-requests, python-imaging, python-zmq
+Depends: ${misc:Depends}, ${python:Depends}, python-gevent, python-imaging, python-zmq
 Description: Katana is HTTP caching proxy with dynamic image resizing capabiliy.
 
