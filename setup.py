@@ -10,7 +10,6 @@ setup(
     url='http://github.com/sebest/katana',
     packages=['katana'],
     scripts = ['scripts/katana',],
-    data_files = [('/etc/katana', ['katana.conf.sample']),],
     install_requires=[
         'Pillow',
         'gevent',
