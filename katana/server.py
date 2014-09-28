@@ -220,7 +220,11 @@ class Server(object):
                             start_response('200 OK', headers)
                             if request_method == 'HEAD':
                                 return []
-                            image = open(image_dst, 'rb')
+                            try:
+                                image = open(image_dst, 'rb')
+                            except IOError as exc:
+                                self.logger.error('can\'t open %s: %s', image_dst, exc)
+                                return []
                             try:
                                 return environ['wsgi.file_wrapper'](image, self.config['chunk_size'])
                             except KeyError:
