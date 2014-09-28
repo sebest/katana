@@ -1,6 +1,7 @@
 __all__ = ['HttpWhoHas']
 
-from gevent import monkey; monkey.patch_all()
+from gevent import monkey
+monkey.patch_all()
 
 import gevent
 
@@ -12,6 +13,7 @@ import logging
 
 
 class DefaultErrorHandler(urllib2.HTTPDefaultErrorHandler):
+
     def http_error_default(self, req, fp, code, msg, headers):
         result = urllib2.HTTPError(req.get_full_url(), code, msg, headers, fp)
         result.status = code
@@ -19,6 +21,7 @@ class DefaultErrorHandler(urllib2.HTTPDefaultErrorHandler):
 
 
 class HttpWhoHas(object):
+
     """Finds the HTTP server that store a specific file from a list of HTTP servers.
 
     This object allow to defines clusters of nodes, each nodes of the cluster should have
@@ -43,7 +46,8 @@ class HttpWhoHas(object):
         self.timeout = timeout
 
         if proxy:
-            urllib2.install_opener(urllib2.build_opener(urllib2.ProxyHandler({'http': proxy})))
+            urllib2.install_opener(
+                urllib2.build_opener(urllib2.ProxyHandler({'http': proxy})))
 
         urllib2.install_opener(urllib2.build_opener(DefaultErrorHandler()))
 
@@ -74,23 +78,26 @@ class HttpWhoHas(object):
             if status_code in (200, 304) and not hasattr(req, 'redirect_dict'):
                 host = req.get_header('Host')
                 modified = status_code == 200
-                self.logger.debug('found url=%s filer=%s host=%s modified=%s', full_url, name, host, modified)
+                self.logger.debug(
+                    'found url=%s filer=%s host=%s modified=%s', full_url, name, host, modified)
                 res.put({
                         'filer': name,
                         'url': full_url,
                         'host': host,
                         'modified': modified,
                         'headers': dict(resp.headers),
-                })
+                        })
             else:
-                self.logger.debug('%s url=%s returned code %d', name, full_url, status_code)
+                self.logger.debug(
+                    '%s url=%s returned code %d', name, full_url, status_code)
         except (urllib2.HTTPError, urllib2.URLError) as exc:
             self.logger.debug('%s url=%s error: %s', name, full_url, exc)
         except Exception as exc:
             self.logger.exception('%s url=%s got an exception', name, full_url)
 
     def _do_reqs(self, reqs, res):
-        jobs = [gevent.spawn(self._do_req, name, req, res) for name, req in reqs]
+        jobs = [gevent.spawn(self._do_req, name, req, res)
+                for name, req in reqs]
         gevent.joinall(jobs, timeout=self.timeout)
         res.put(None)
         gevent.killall(jobs)
@@ -124,15 +131,18 @@ class HttpWhoHas(object):
             elif last_modified:
                 headers['If-Modified-Since'] = last_modified
             for ip in sample(info['ips'], info['per_cluster']):
-                self.logger.debug('looking for %s on %s with headers %s', filename, ip, headers)
-                req = urllib2.Request('http://%s%s' % (ip, filename), headers=headers)
+                self.logger.debug(
+                    'looking for %s on %s with headers %s', filename, ip, headers)
+                req = urllib2.Request(
+                    'http://%s%s' % (ip, filename), headers=headers)
                 req.get_method = lambda: 'HEAD'
                 reqs.append((name, req))
 
         gevent.spawn(self._do_reqs, reqs, res)
         result = res.get()
         if result:
-            self.logger.debug('found %s on %s: url=%s host=%s', filename, result['filer'], result['url'], result['host'])
+            self.logger.debug('found %s on %s: url=%s host=%s', filename, result[
+                              'filer'], result['url'], result['host'])
         else:
             self.logger.debug('%s not found', filename)
         return result
