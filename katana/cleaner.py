@@ -9,6 +9,7 @@ from time import time
 from .config import get_config
 from .ipc import IPC
 
+
 class Cleaner(object):
     def __init__(self):
         self.config = get_config()
@@ -125,7 +126,7 @@ class Cleaner(object):
         '''
         st = os.statvfs(self.config['cache_dir'])
         disk_usage = (st.f_blocks - st.f_bfree) / float(st.f_blocks) * 100
-        file_usage = ( st.f_files - st.f_ffree) / float(st.f_files) * 100
+        file_usage = (st.f_files - st.f_ffree) / float(st.f_files) * 100
         self.logger.info('cleaner process starting: Disk space %d%% / Files %d%%', disk_usage, file_usage)
         if max(disk_usage, file_usage) > self.config['cache_dir_max_usage']:
             nb_clean = self.config['clean_batch_size']

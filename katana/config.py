@@ -37,6 +37,7 @@ import os
 import logging.config
 from copy import deepcopy
 
+
 def get_config(config_file='katana.conf'):
     config = deepcopy(DEFAULT_CONFIG)
     config_file = os.environ.get('CONFIG_FILE', config_file)

@@ -4,6 +4,7 @@ import fcntl
 from contextlib import contextmanager
 from time import time, sleep
 
+
 @contextmanager
 def wlock(filename, retry_interval=0.05):
     # returns: write, exists, fd

@@ -1,4 +1,4 @@
-from gevent import monkey; monkey.patch_all()
+from gevent import monkey; monkey.patch_all() # flake8: noqa
 
 import os
 import re
@@ -45,7 +45,6 @@ class Server(object):
             else:
                 os.unlink(cache)
         return None
-
 
     def get_file(self, origin, cache):
         try:
@@ -165,7 +164,6 @@ class Server(object):
             image = self.config['not_found_source']
         return image, meta
 
-
     def app(self, environ, start_response):
         timer = Timer()
 
@@ -191,7 +189,7 @@ class Server(object):
                     image_dst, meta = getattr(self, action)(match.groupdict())
                     if image_dst:
                         ext = image_dst.rsplit('.', 1)[-1]
-                        headers = [('Content-Type', 'image/%s' % ext), ('X-Response-Time', str(timer)),]
+                        headers = [('Content-Type', 'image/%s' % ext), ('X-Response-Time', str(timer)), ]
 
                         client_not_modified = False
                         if meta.get('etag'):
@@ -233,7 +231,7 @@ class Server(object):
                             try:
                                 return environ['wsgi.file_wrapper'](image, self.config['chunk_size'])
                             except KeyError:
-                                return  iter(lambda: image.read(self.config['chunk_size']), '')
+                                return iter(lambda: image.read(self.config['chunk_size']), '')
                     break
 
         start_response('404 Not Found', [('X-Response-Time', str(timer))])

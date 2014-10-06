@@ -1,8 +1,8 @@
 from zmq import green as zmq
 
 
-class IPCInvalidMode(Exception): pass
-class IPCSockPathError(Exception): pass
+class IPCInvalidMode(Exception): pass # flake8: noqa
+class IPCSockPathError(Exception): pass # flake8: noqa
 
 
 class IPC(object):
