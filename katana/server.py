@@ -190,7 +190,8 @@ class Server(object):
                 if match:
                     image_dst, meta = getattr(self, action)(match.groupdict())
                     if image_dst:
-                        headers = [('Content-Type', 'image/jpeg'), ('X-Response-Time', str(timer)),]
+                        ext = image_dst.rsplit('.', 1)[-1]
+                        headers = [('Content-Type', 'image/%s' % ext), ('X-Response-Time', str(timer)),]
 
                         client_not_modified = False
                         if meta.get('etag'):
