@@ -4,6 +4,7 @@ from zmq import green as zmq
 class IPCInvalidMode(Exception): pass
 class IPCSockPathError(Exception): pass
 
+
 class IPC(object):
 
     def __init__(self, sock_path):

@@ -96,7 +96,8 @@ class Meta(object):
                 etag = headers.get('etag', '')
                 last_modified = headers.get('last-modified', '')
                 expires = self.config['cache_default_expires']
-                m = re.match('.*max-age=(\d+).*', headers.get('cache-control', ''))
+                cache_control = headers.get('cache-control', '')
+                m = re.match('.*max-age=(\d+).*', cache_control if cache_control else '')
                 if m:
                     expires = int(m.group(1))
                 cache_meta.write('%s|%s|%s|%s|%s' % (self.META_MAGIC, timestamp, expires, last_modified, etag))

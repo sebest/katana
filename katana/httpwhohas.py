@@ -1,7 +1,6 @@
 __all__ = ['HttpWhoHas']
 
-from gevent import monkey
-monkey.patch_all()
+from gevent import monkey; monkey.patch_all()
 
 import gevent
 
@@ -21,7 +20,6 @@ class DefaultErrorHandler(urllib2.HTTPDefaultErrorHandler):
 
 
 class HttpWhoHas(object):
-
     """Finds the HTTP server that store a specific file from a list of HTTP servers.
 
     This object allow to defines clusters of nodes, each nodes of the cluster should have
@@ -141,8 +139,8 @@ class HttpWhoHas(object):
         gevent.spawn(self._do_reqs, reqs, res)
         result = res.get()
         if result:
-            self.logger.debug('found %s on %s: url=%s host=%s', filename, result[
-                              'filer'], result['url'], result['host'])
+            self.logger.debug('found %s on %s: url=%s host=%s', filename,
+                              result['filer'], result['url'], result['host'])
         else:
             self.logger.debug('%s not found', filename)
         return result

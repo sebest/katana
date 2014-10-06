@@ -19,8 +19,10 @@ from .ipc import IPC
 
 USER_AGENT = 'Katana/%s' % __version__
 
+
 def date_to_ts(date):
     return mktime(strptime(date, "%a, %d %b %Y %H:%M:%S %Z"))
+
 
 class Server(object):
 
@@ -43,6 +45,7 @@ class Server(object):
             else:
                 os.unlink(cache)
         return None
+
 
     def get_file(self, origin, cache):
         try:
@@ -161,6 +164,7 @@ class Server(object):
         if not image and self.config['not_found_as_200']:
             image = self.config['not_found_source']
         return image, meta
+
 
     def app(self, environ, start_response):
         timer = Timer()
