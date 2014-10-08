@@ -23,11 +23,12 @@ def resize(src, dst, width=0, height=0, fit=True, quality=75):
 
     logger.debug('resize %s: (%dx%d) => (%dx%d) mode=%s quality=%d', src, origin_width, origin_height, width, height, 'fit' if fit else 'fill', quality)
 
-    if fit:
-        img = ImageOps.fit(img, (width, height), Image.ANTIALIAS)
-    else:
-        img = img.copy()
-        img.thumbnail((width, height), Image.ANTIALIAS)
+    if width != 0 and height != 0:
+        if fit:
+            img = ImageOps.fit(img, (width, height), Image.ANTIALIAS)
+        else:
+            img = img.copy()
+            img.thumbnail((width, height), Image.ANTIALIAS)
     try:
         if img.mode != "RGB":
             img = img.convert("RGB")
