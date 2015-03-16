@@ -1,28 +1,57 @@
 # Katana
-#proxy = '127.0.0.1:8888'
+# proxy = '127.0.0.1:8888'
 accel_redirect = False
 
 not_found_as_200 = True
 not_found_source = './404.jpeg'
 
-resize_url_re = r'/(?P<user_id>[a-f0-9]{6}(?P<u1>[a-f0-9])(?P<u2>[a-f0-9])[a-f0-9]{16})/(?P<media_id>[a-f0-9]{6}(?P<m1>[a-f0-9])(?P<m2>[a-f0-9])[a-f0-9]{16})/thumb-(?P<width>\d{1,4})?x(?P<height>\d{1,4})?(?P<fit>-f)?(?:-q(?P<quality>\d{1,2}))?(?P<version>(?:-\d+)?).jpeg'
-resize_origin = '/{u2}/{u1}/{user_id}/{m2}/{m1}/{media_id}/jpeg_thumbnail_source.jpeg'
-resize_cache_path_source = '/{u2}/{u1}/{user_id}/{m2}/{m1}/{media_id}/source{version}.jpeg'
-resize_cache_path_resized = '/{u2}/{u1}/{user_id}/{m2}/{m1}/{media_id}/{width}x{height}-{fit}-q{quality}{version}.jpeg'
+routing = [{
+    'resize': {
+        'url_re': r'/channel-(?P<object_id>(?P<a1>[a-zA-Z0-9_-])(?P<a2>[a-zA-Z0-9_-])[a-zA-Z0-9_-]*)-(?P<image_type>[a-z]+)-(?P<image_version>\d+)(?:_(?P<width>\d{1,4})?x(?P<height>\d{1,4})?(?P<fit>-f)?(?:-q(?P<quality>\d{1,2}))?)?.(?P<thumb_ext>(?:jpeg|webp))',
+        'origin_tmpl': '/{object_id}.jpg',
+        'cache_path_source': '/channel/{a1}/{a2}/{object_id}-{image_type}-{image_version}/src.jpeg',
+        'cache_path_resized': '/channel/{a1}/{a2}/{object_id}-{image_type}-{image_version}/{width}x{height}-{fit}-q{quality}.{thumb_ext}',
+        'origin': 'dm',
+    },
+    'proxy': {
+        'url_re': r'/channel-(?P<object_id>(?P<a1>[a-zA-Z0-9_-])(?P<a2>[a-zA-Z0-9_-])[a-zA-Z0-9_-]*)-(?P<image_type>[a-z]+)-(?P<image_version>\d+)(?:.jpeg)?',
+        'origin_tmpl': '/{object_id}.jpg',
+        'cache_path': '/channel/{a1}/{a2}/{object_id}-{image_type}-{image_version}/src.jpeg',
+        'origin': 'dm',
+    },
+}, {
+    'resize': {
+        'url_re': r'/(?P<object_type>[a-z]+)-(?P<object_id>[a-z0-9]*(?P<a1>[a-z0-9])(?P<a2>[a-z0-9]))-(?P<image_type>[a-z]+)-(?P<image_version>\d+)(?:_(?P<width>\d{1,4})?x(?P<height>\d{1,4})?(?P<fit>-f)?(?:-q(?P<quality>\d{1,2}))?)?.(?P<thumb_ext>(?:jpeg|webp))',
+        'origin_tmpl': '/pixelle-thumbnails-dev/{object_type}-{object_id}-{image_type}-{image_version}.jpeg',
+        'cache_path_source': '/{object_type}/{a2}/{a1}/{object_id}-{image_type}-{image_version}/src.jpeg',
+        'cache_path_resized': '/{object_type}/{a2}/{a1}/{object_id}-{image_type}-{image_version}/{width}x{height}-{fit}-q{quality}.{thumb_ext}',
+        'origin': 's3',
+    },
+    'proxy': {
+        'url_re': r'/(?P<object_type>[a-z]+)-(?P<object_id>[a-z0-9]*(?P<a1>[a-z0-9])(?P<a2>[a-z0-9]))-(?P<image_type>[a-z]+)-(?P<image_version>\d+)(?:.jpeg)?',
+        'origin_tmpl': '/pixelle-thumbnails-dev/{object_type}-{object_id}-{image_type}-{image_version}.jpeg',
+        'cache_path': '/{object_type}/{a2}/{a1}/{object_id}-{image_type}-{image_version}/src.jpeg',
+        'origin': 's3',
+    },
+}]
 
-proxy_url_re = r'/(?P<user_id>[a-f0-9]{6}(?P<u1>[a-f0-9])(?P<u2>[a-f0-9])[a-f0-9]{16})/(?P<media_id>[a-f0-9]{6}(?P<m1>[a-f0-9])(?P<m2>[a-f0-9])[a-f0-9]{16})/jpeg_thumbnail_(?P<size>\w+)(?P<version>(?:-\d+)?).jpeg'
-proxy_origin = '/{u2}/{u1}/{user_id}/{m2}/{m1}/{media_id}/jpeg_thumbnail_{size}.jpeg'
-proxy_cache_path = '/{u2}/{u1}/{user_id}/{m2}/{m1}/{media_id}/{size}{version}.jpeg'
-
-clean_every = 10
+origins = {
+    's3': {
+        's3': {
+            'ips': ['s3.amazonaws.com'],
+        },
+    },
+    'dm': {
+        'dm': {
+            'ips': ['s1.dmcdn.net'],
+        },
+    },
+}
 
 origin_timeout = 10
 origin_fetch_timeout = 10
-origin_mapping = {
-    'filer-02-dev': {
-        'ips': ['10.195.11.%d:8079' % i for i in range(1, 5)],
-    },
-}
+
+clean_every = 10
 
 logging = {
     'version': 1,
@@ -37,7 +66,7 @@ logging = {
         },
         'katana.httpwhohas': {
             'handlers': ['file', 'console'],
-            'level': 'INFO',
+            'level': 'DEBUG',
         }
     },
     'handlers': {

@@ -33,9 +33,11 @@ class Server(object):
         self.meta = Meta()
         self.ipc = IPC(self.config['ipc_sock_path'])
 
-        self.hws = HttpWhoHas(proxy=self.config['proxy'], timeout=self.config['origin_timeout'], user_agent=USER_AGENT)
-        for name, conf in self.config['origin_mapping'].items():
-            self.hws.set_cluster(name, conf['ips'], conf.get('headers'))
+        self.hws = {}
+        for o_name, o_conf in self.config['origins'].items():
+            self.hws[o_name] = HttpWhoHas(proxy=self.config['proxy'], timeout=self.config['origin_timeout'], user_agent=USER_AGENT)
+            for c_name, c_conf in o_conf.items():
+                self.hws[o_name].set_cluster(c_name, c_conf['ips'], c_conf.get('headers'))
 
     def _get_cache(self, cache):
         if os.path.exists(cache):
@@ -46,7 +48,7 @@ class Server(object):
                 os.unlink(cache)
         return None
 
-    def get_file(self, origin, cache):
+    def get_file(self, origin_name, origin_path, cache):
         try:
             os.makedirs(os.path.dirname(cache))
         except OSError as exc:
@@ -66,8 +68,13 @@ class Server(object):
                     write = False
                     self.logger.debug('%s not expired', cache)
             if write:
-                self.logger.debug('resolving %s', origin)
-                info = self.hws.resolve(origin, etag=meta.get('etag'), last_modified=meta.get('last_modified'))
+                self.logger.debug('resolving %s on %s', origin_path, origin_name)
+                try:
+                    hws = self.hws[origin_name]
+                except KeyError:
+                    self.logger.error('origin name %s not found in configuration file', origin_name)
+                    return None, {}
+                info = hws.resolve(origin_path, etag=meta.get('etag'), last_modified=meta.get('last_modified'))
                 if info:
                     url = info['url']
                     if not info['modified']:
@@ -100,10 +107,10 @@ class Server(object):
                         self.ipc.push('CACHE-IN %s' % cache)
                         return cache, meta
                 else:
-                    self.logger.debug('%s not found on origin', cache)
+                    self.logger.debug('%s not found on origin %s ', cache, origin_name)
 
             elif self._get_cache(cache):
-                self.logger.debug('%s found in cache as %s', origin, cache)
+                self.logger.debug('%s found in cache as %s', origin_path, cache)
                 return cache, meta
 
         return None, {}
@@ -126,7 +133,7 @@ class Server(object):
 
         return None, {}
 
-    def resize(self, values):
+    def resize(self, ctx, values):
         width = values.get('width')
         width = int(width) if width else 0
         width = min(width, self.config['thumb_max_width'])
@@ -148,18 +155,20 @@ class Server(object):
             'quality': quality,
             })
 
-        origin = self.config['resize_origin'].format(**values)
-        cache_source = '%s%s' % (self.config['cache_dir'], self.config['resize_cache_path_source'].format(**values))
-        image_src, meta = self.get_file(origin, cache_source)
+        origin_name = ctx['origin']
+        origin_path = ctx['origin_tmpl'].format(**values)
+        cache_source = '%s%s' % (self.config['cache_dir'], ctx['cache_path_source'].format(**values))
+        image_src, meta = self.get_file(origin_name, origin_path, cache_source)
 
-        cache_resized = '%s%s' % (self.config['cache_dir'], self.config['resize_cache_path_resized'].format(**values))
+        cache_resized = '%s%s' % (self.config['cache_dir'], ctx['cache_path_resized'].format(**values))
         image_resized, meta = self.get_image_resized(image_src, cache_resized, width, height, fit, quality, meta)
         return image_resized, meta
 
-    def proxy(self, values):
-        origin = self.config['proxy_origin'].format(**values)
-        cache = '%s%s' % (self.config['cache_dir'], self.config['proxy_cache_path'].format(**values))
-        image, meta = self.get_file(origin, cache)
+    def proxy(self, ctx, values):
+        origin_name = ctx['origin']
+        origin_path = ctx['origin_tmpl'].format(**values)
+        cache = '%s%s' % (self.config['cache_dir'], ctx['cache_path'].format(**values))
+        image, meta = self.get_file(origin_name, origin_path, cache)
         if not image and self.config['not_found_as_200']:
             image = self.config['not_found_source']
         return image, meta
@@ -181,58 +190,63 @@ class Server(object):
         self.logger.debug('client check modified etag=%s modified=%s', client_etag, client_modified_ts)
 
         image_dst = None
-        for action in ('resize', 'proxy'):
-            regex = self.config['%s_url_re' % action]
-            if regex:
-                match = re.match(regex, environ['PATH_INFO'])
-                if match:
-                    image_dst, meta = getattr(self, action)(match.groupdict())
-                    if image_dst:
-                        ext = image_dst.rsplit('.', 1)[-1]
-                        headers = [('Content-Type', 'image/%s' % ext), ('X-Response-Time', str(timer)), ]
+        for route in self.config['routing']:
+            for action in ('resize', 'proxy'):
+                ctx = route.get(action)
+                if not ctx:
+                    continue
+                regex = ctx.get('url_re')
+                if regex:
+                    match = re.match(regex, environ['PATH_INFO'])
+                    if match:
+                        self.logger.debug('matching %s for %s', regex, action)
+                        image_dst, meta = getattr(self, action)(ctx, match.groupdict())
+                        if image_dst:
+                            ext = image_dst.rsplit('.', 1)[-1]
+                            headers = [('Content-Type', 'image/%s' % ext), ('X-Response-Time', str(timer)), ]
 
-                        client_not_modified = False
-                        if meta.get('etag'):
-                            headers.append(('ETag', meta['etag']))
-                            if client_etag:
-                                client_not_modified = client_etag == meta['etag']
-                        if meta.get('last_modified'):
-                            headers.append(('Last-Modified', meta['last_modified']))
-                            if not client_not_modified and client_modified_ts:
-                                client_not_modified = date_to_ts(meta['last_modified']) <= client_modified_ts
+                            client_not_modified = False
+                            if meta.get('etag'):
+                                headers.append(('ETag', meta['etag']))
+                                if client_etag:
+                                    client_not_modified = client_etag == meta['etag']
+                            if meta.get('last_modified'):
+                                headers.append(('Last-Modified', meta['last_modified']))
+                                if not client_not_modified and client_modified_ts:
+                                    client_not_modified = date_to_ts(meta['last_modified']) <= client_modified_ts
 
-                        expires = meta.get('expires', 0)
-                        if isinstance(self.config['external_expires'], int):
-                            expires = max(self.config['external_expires'],  expires)
-                        if expires:
-                            now = time()
-                            timestamp_expires = meta.get('timestamp', now) + expires
-                            max_age = timestamp_expires - now
-                            headers.append(('Expires', datetime.utcfromtimestamp(timestamp_expires).strftime("%a, %d %b %Y %H:%M:%S GMT")))
-                            headers.append(('Cache-Control', 'max-age=%d' % max_age))
-                        if client_not_modified:
-                            start_response('304 Not Modified', headers)
-                            return []
-                        elif self.config['accel_redirect']:
-                            accel_redirect = self.config['accel_redirect_path'] + image_dst[len(self.config['cache_dir']):]
-                            if request_method == 'GET':
-                                headers.append(('X-Accel-Redirect', accel_redirect))
-                            start_response('200 OK', headers)
-                            return []
-                        else:
-                            start_response('200 OK', headers)
-                            if request_method == 'HEAD':
+                            expires = meta.get('expires', 0)
+                            if isinstance(self.config['external_expires'], int):
+                                expires = max(self.config['external_expires'],  expires)
+                            if expires:
+                                now = time()
+                                timestamp_expires = meta.get('timestamp', now) + expires
+                                max_age = timestamp_expires - now
+                                headers.append(('Expires', datetime.utcfromtimestamp(timestamp_expires).strftime("%a, %d %b %Y %H:%M:%S GMT")))
+                                headers.append(('Cache-Control', 'max-age=%d' % max_age))
+                            if client_not_modified:
+                                start_response('304 Not Modified', headers)
                                 return []
-                            try:
-                                image = open(image_dst, 'rb')
-                            except IOError as exc:
-                                self.logger.error('can\'t open %s: %s', image_dst, exc)
+                            elif self.config['accel_redirect']:
+                                accel_redirect = self.config['accel_redirect_path'] + image_dst[len(self.config['cache_dir']):]
+                                if request_method == 'GET':
+                                    headers.append(('X-Accel-Redirect', accel_redirect))
+                                start_response('200 OK', headers)
                                 return []
-                            try:
-                                return environ['wsgi.file_wrapper'](image, self.config['chunk_size'])
-                            except KeyError:
-                                return iter(lambda: image.read(self.config['chunk_size']), '')
-                    break
+                            else:
+                                start_response('200 OK', headers)
+                                if request_method == 'HEAD':
+                                    return []
+                                try:
+                                    image = open(image_dst, 'rb')
+                                except IOError as exc:
+                                    self.logger.error('can\'t open %s: %s', image_dst, exc)
+                                    return []
+                                try:
+                                    return environ['wsgi.file_wrapper'](image, self.config['chunk_size'])
+                                except KeyError:
+                                    return iter(lambda: image.read(self.config['chunk_size']), '')
+                        break
 
         start_response('404 Not Found', [('X-Response-Time', str(timer))])
         return []

@@ -13,16 +13,26 @@ DEFAULT_CONFIG = {
     'thumb_default_quality': 75,
     'origin_fetch_timeout': 3,
     'origin_timeout': 1,
-    'origin_mapping': {
-        'localhost': {'ips': ['127.0.0.1'], 'headers': {'Host': 'localhost'}}
+    'routing': [{
+        'resize': {
+            'url_re': None,
+            'origin_tmpl': '',
+            'cache_path_source': '',
+            'cache_path_resized': '',
+            'origin': 'default',
+        },
+        'proxy': {
+            'url_re': None,
+            'origin_tmpl': '',
+            'cache_path': '',
+            'origin': 'default',
+        },
+    }],
+    'origins': {
+        'default': {
+            'localhost': {'ips': ['127.0.0.1'], 'headers': {'Host': 'localhost'}}
+        }
     },
-    'resize_url_re': None,
-    'resize_origin': '',
-    'resize_cache_path_source': '',
-    'resize_cache_path_resized': '',
-    'proxy_url_re': None,
-    'proxy_origin': '',
-    'proxy_cache_path': '',
     'cache_force_expires': False,
     'cache_default_expires': 300,
     'external_expires': 600,

@@ -1,4 +1,4 @@
-__version__ = '1.5'
+__version__ = '2.0'
 
 
 def create_app():
