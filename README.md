@@ -1,11 +1,11 @@
 Katana
 ======
 
-*Katana* is a HTTP caching proxy with dynamic image resizing capabiliy.
+*Katana* is a HTTP caching proxy with dynamic image resizing capabilities.
+ 
+It has been used on production for more than 2 years on moderate traffic websites and can scale linearly by adding more instances.
 
-It is used on production for more than 2 years on moderate traffic websites and can scale linearly adding more instances.
-
-Even thought it can serve traffic directly to clients, a really common setup is to use it as the origin of CDN like Akamai, Edgecast or Cloudfront.
+Even though it can serve traffic directly to clients, a really common setup is to use it as the origin of CDN like Akamai, Edgecast or Cloudfront.
 
 Features
 --------
@@ -15,12 +15,12 @@ Features
 - Image resizing and caching
 - Image format conversion: jpeg, webp or png.
 - Full support of HTTP caching Headers (Etag, Cache-Control, If-Modified-Since, etc)
-- Rewriting of URLs and path in the cache
+- URL rewriting
 - HttpWhoHas: using HEAD requests on backends server to locate a file
 - Configurable logging and debugging
 - X-accel feature to put nginx in front of Katana
-- Can return (resized) image on 404 not found
-- Can work with Gunicorn or standalone
+- Can return (resized) image for 404 not found
+- Can work with Gunicorn or standalone using gevent wsgi server
 
 Installation
 ------------
@@ -122,7 +122,7 @@ You can define multiple origins that you can later reference in your `routing`.
 
 Each origin can contain multiple clusters, a cluster is a list of servers having the same files.
 
-Each cluster have different files.
+Each cluster contains different files.
 
 The proxy is able to locate which cluster is hosting a specific file.
 
@@ -130,7 +130,7 @@ Each node in a cluster does not have to be perfectly synced as the proxy will tr
 
 So even if a node is down it does not affect the service.
 
-It is highly recommended that every nodes in a cluster have the same files at a certain point in time but it is not required for the sync process to be realtime.
+It is highly recommended that every node in a cluster contains the same files at a certain point in time but it is not required for the sync process to be realtime.
 
 Nodes in a cluster provide redundancy and higher throughput.
 
@@ -138,7 +138,7 @@ Clusters provide horizontal storage scalability.
 
 The most simple setting is to have one origin with one cluster of one node.
 
-It is recommended to use ip address to define nodes in a cluster to avoid DNS resolution, you can pass HTTP headers is you are using names based virtualhost.
+It is recommended to use IP addresses to define nodes in a cluster to avoid DNS resolution, you can pass HTTP headers if you are using name based virtualhosts.
 
 *example with clusters*:
 ```python
@@ -162,7 +162,7 @@ origins = {
 
 This example defines one origin with 3 clusters with multiple nodes.
 
-We take advantage of the python syntax to create a list the nodes.
+We take advantage of the Python syntax to create a list of the nodes.
 
 *example with amazon S3 and a custom origin*:
 ```python
@@ -201,7 +201,7 @@ origins = {
 
 `routing` is the most important parameter as it allows you to define how you will route the requests hitting the proxy.
 
-`routing` is a `list` of `dict`, the routes will be try in the order of the list, and the first route that match a regex will be choosen.
+`routing` is a `list` of `dict`, the routes will be tried in list order, and the first route that match a regex will be choosen.
 
 Each `dict` can contains up to actions as key: `resize` and/or `proxy`, the value of the `action` key is a dict of parameters.
 
@@ -227,7 +227,7 @@ routing = [{
 ```
 **Actions**
 
- * `proxy` is used is you want to serve the image as is with no processing, only proxy/caching, proxy is usefull if you want to give access to the source image.
+ * `proxy` is used if you want to serve the image as is with no processing, only proxy/caching. Proxy is usefull if you want to give access to the source image.
  * `resize` is used if you want to be able to resize the image.
 
 **Proxy parameters**
