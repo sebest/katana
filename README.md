@@ -32,15 +32,15 @@ Katana depends on:
  * [Pillow](http://python-pillow.github.io/)
  * [gevent](https://github.com/gevent/gevent)
 
- Make sure that `Pillow` has all its dependencies installed if you want support for jpeg or webp image formats.
+Make sure that `Pillow` has all its dependencies installed if you want support for jpeg or webp image formats.
 
- On OsX you can do this with:
- ```
- $ brew install libjpeg
- $ brew install webp
- ```
+On OsX you can do this with:
+```
+$ brew install libjpeg
+$ brew install webp
+```
 
-For PyZMQ, make sure that the PyZMQ binding match the ZeroMQ library version.
+For PyZMQ, make sure that the PyZMQ bindings match the ZeroMQ library version.
 
 Tested with versions:
  * zeromq 4.0.5
