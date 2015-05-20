@@ -47,7 +47,7 @@ Tested with versions:
  * pyzmq 14.6.0
  * webp 0.4.3
  * libjpeg 8d
- * Pillow 2.8.1
+ * Pillow 2.8.1g
  * gevent 1.0.1
 
 ### Install from source with a virtualenv
@@ -237,13 +237,13 @@ routing = [{
  * `origin`: name of the origin to use (see the `origins` parameter).
  * `cache_path`: a template string to store the image on disk in the `cache_dir`.
 
- **Resize parameters**
+**Resize parameters**
 
-  * `url_re`: regex with capturing named groups, see python documentation [here](https://docs.python.org/2/library/re.html).
-  * `origin_tmpl`: a template string to rewrite the path of the image on the origin using the caputred named groups from `url_re`.
-  * `origin`: name of the origin to use (see the `origins` parameter).
-  * `cache_path_source`: a template string to store the source image on disk in the `cache_dir`.
-  * `cache_path_resized`: a template string to store the resized image on disk in the `cache_dir`.
+ * `url_re`: regex with capturing named groups, see python documentation [here](https://docs.python.org/2/library/re.html).
+ * `origin_tmpl`: a template string to rewrite the path of the image on the origin using the caputred named groups from `url_re`.
+ * `origin`: name of the origin to use (see the `origins` parameter).
+ * `cache_path_source`: a template string to store the source image on disk in the  `cache_dir`.
+ * `cache_path_resized`: a template string to store the resized image on disk in the `cache_dir`.
 
 Note that you could and should use the same value for `cache_path` and `cache_path_source` if you use both `proxy` and `resize` actions to share the cached source image.
 
