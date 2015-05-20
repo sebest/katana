@@ -1,0 +1,63 @@
+# curl -I http://127.0.0.1:8080/images/srpr/logo4w.png
+# curl -I http://127.0.0.1:8080/images/srpr/logo4w.png/resize-80x.webp
+
+origins = {
+    'google': {
+        'google': {
+            'ips': ['www.google.com']
+        }
+    }
+}
+
+routing = [{
+    'proxy': {
+        'url_re': r'(?P<base>.*).(?P<ext>jpeg|png)',
+        'origin_tmpl': '{base}.{ext}',
+        'cache_path': '{base}/source.{ext}',
+        'origin': 'google',
+    },
+    'resize': {
+        'url_re': r'(?P<base>.*).(?P<ext>jpeg|png)/resize-(?P<width>\d{1,4})?x(?P<height>\d{1,4})?(?P<fit>-f)?(?:-q(?P<quality>\d{1,2}))?(?P<version>(?:-\d+)?).(?P<thumb_ext>(?:jpeg|webp))',
+        'origin_tmpl': '{base}.{ext}',
+        'cache_path_source': '{base}/source.{ext}',
+        'cache_path_resized': '{base}-{width}x{height}-{fit}-q{quality}{version}.{thumb_ext}',
+        'origin': 'google',
+    }
+}]
+
+logging = {
+    'version': 1,
+    'loggers': {
+        'katana.server': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+        },
+        'katana.cleaner': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+        },
+        'katana.resizer': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+        },
+        'katana.meta': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+        },
+        'katana.httpwhohas': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'default',
+        },
+    },
+    'formatters': {
+        'default': {
+            'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        },
+    }
+}

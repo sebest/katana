@@ -13,6 +13,7 @@ Features
 - HTTP proxying
 - HTTP caching with file cleaner
 - Image resizing and caching
+- Image format conversion: jpeg, webp or png.
 - Full support of HTTP caching Headers (Etag, Cache-Control, If-Modified-Since, etc)
 - Rewriting of URLs and path in the cache
 - HttpWhoHas: using HEAD requests on backends server to locate a file
@@ -21,14 +22,95 @@ Features
 - Can return (resized) image on 404 not found
 - Can work with Gunicorn or standalone
 
+Installation
+------------
+
+### Requirements
+
+Katana depends on:
+ * [PyZMQ](https://github.com/zeromq/pyzmq)
+ * [Pillow](http://python-pillow.github.io/)
+ * [gevent](https://github.com/gevent/gevent)
+
+ Make sure that `Pillow` has all its dependencies installed if you want support for jpeg or webp image formats.
+
+ On OsX you can do this with:
+ ```
+ $ brew install libjpeg
+ $ brew install webp
+ ```
+
+For PyZMQ, make sure that the PyZMQ binding match the ZeroMQ library version.
+
+Tested with versions:
+ * zeromq 4.0.5
+ * pyzmq 14.6.0
+ * webp 0.4.3
+ * libjpeg 8d
+ * Pillow 2.8.1
+ * gevent 1.0.1
+
+### Install from source with a virtualenv
+
+```
+$ sudo pip install virtualenv
+$ mkdir katana
+$ cd katana/
+$ virtualenv venv
+$ git clone git@github.com:sebest/katana.git
+$ source venv/bin/activate
+$ cd katana/
+$ python setup.py install
+```
+
+Quickstart
+----------
+
+Create a directory for the cache:
+```
+$ mkdir data
+```
+
+Use the `katana-simple.conf.sample` as a default configuration:
+```
+$ cp katana-simple.conf.sample katana.conf
+```
+
+This sample configuration file is proxying images hosted on www.google.com, we will resize the google logo.
+
+Test the config file by dumping and checking that the output matches the content of katana.conf
+```
+$ katana --dump
+```
+
+Start the cache cleaner:
+```
+$ katana --cleaner &
+```
+
+Start the web server:
+```
+$ katana &
+```
+
+Do a request on the source image:
+```
+$ curl -I http://127.0.0.1:8080/images/srpr/logo4w.png
+```
+
+Do a request to resize the previous image:
+```
+$ curl -I http://127.0.0.1:8080/images/srpr/logo4w.png/resize-300x.webp
+```
+
 Configuration
 -------------
 
 The configuration file is a standard python file.
 
 Two sample configuration files are provide:
- * katana-simple.conf.sample: the most basic configuration file to start with.
- * katana-complex.conf.sample: a more complex example showing off more features.
+ * `katana-simple.conf.sample`: the most basic configuration file to start with.
+ * `katana-complex.conf.sample`: a more complex example showing off more features.
 
 ### Configuration parameters
 
@@ -128,27 +210,42 @@ Here is the default value to give you an idea of the structure.
 *default*:
 ```python
 routing = [{
+    'proxy': {
+        'url_re': None,
+        'origin_tmpl': '',
+        'cache_path': '',
+        'origin': 'default',
+    },
     'resize': {
         'url_re': None,
         'origin_tmpl': '',
         'cache_path_source': '',
         'cache_path_resized': '',
         'origin': 'default',
-    },
-    'proxy': {
-        'url_re': None,
-        'origin_tmpl': '',
-        'cache_path': '',
-        'origin': 'default',
     }
 }]
 ```
 **Actions**
 
-`proxy` is used is you want to serve the image as is with no processin
+ * `proxy` is used is you want to serve the image as is with no processing, only proxy/caching, proxy is usefull if you want to give access to the source image.
+ * `resize` is used if you want to be able to resize the image.
 
-**paramters for **
+**Proxy parameters**
 
+ * `url_re`: regex with capturing named groups, see python documentation [here](https://docs.python.org/2/library/re.html).
+ * `origin_tmpl`: a template string to rewrite the path of the image on the origin using the caputred named groups from `url_re`.
+ * `origin`: name of the origin to use (see the `origins` parameter).
+ * `cache_path`: a template string to store the image on disk in the `cache_dir`.
+
+ **Resize parameters**
+
+  * `url_re`: regex with capturing named groups, see python documentation [here](https://docs.python.org/2/library/re.html).
+  * `origin_tmpl`: a template string to rewrite the path of the image on the origin using the caputred named groups from `url_re`.
+  * `origin`: name of the origin to use (see the `origins` parameter).
+  * `cache_path_source`: a template string to store the source image on disk in the `cache_dir`.
+  * `cache_path_resized`: a template string to store the resized image on disk in the `cache_dir`.
+
+Note that you could and should use the same value for `cache_path` and `cache_path_source` if you use both `proxy` and `resize` actions to share the cached source image.
 
 #### logging
 
