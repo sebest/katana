@@ -18,14 +18,14 @@ class IPC(object):
             self.sock_push = self.ctx.socket(zmq.PUSH)
             self.sock_push.set_hwm(0)
             self.sock_push.connect("ipc://%s" % self.sock_path)
-        self.sock_push.send(msg)
+        self.sock_push.send_string(msg)
 
     def pull(self):
         if not self.sock_pull:
             self.sock_pull = self.ctx.socket(zmq.PULL)
             self.sock_pull.set_hwm(0)
             self.sock_pull.bind("ipc://%s" % self.sock_path)
-        return self.sock_pull.recv()
+        return self.sock_pull.recv_string()
 
 if __name__ == '__main__':
     import sys
@@ -40,4 +40,4 @@ if __name__ == '__main__':
     elif mode == 'pull':
         i = IPC(sock_path)
         while True:
-            print i.pull()
+            print(i.pull())

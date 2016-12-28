@@ -3,10 +3,11 @@ from gevent import monkey; monkey.patch_all() # flake8: noqa
 import os
 import re
 import errno
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 import logging
 from time import time, strptime, mktime
 from datetime import datetime
+from functools import partial
 
 from . import __version__
 from .config import get_config
@@ -34,9 +35,9 @@ class Server(object):
         self.ipc = IPC(self.config['ipc_sock_path'])
 
         self.hws = {}
-        for o_name, o_conf in self.config['origins'].items():
+        for o_name, o_conf in list(self.config['origins'].items()):
             self.hws[o_name] = HttpWhoHas(proxy=self.config['proxy'], timeout=self.config['origin_timeout'], user_agent=USER_AGENT)
-            for c_name, c_conf in o_conf.items():
+            for c_name, c_conf in list(o_conf.items()):
                 self.hws[o_name].set_cluster(c_name, c_conf['ips'], c_conf.get('headers'))
 
     def _get_cache(self, cache):
@@ -90,9 +91,9 @@ class Server(object):
                     if info['host']:
                         headers['Host'] = info['host']
                     try:
-                        req = urllib2.Request(url, headers=headers)
-                        resp = urllib2.urlopen(req, timeout=self.config['origin_fetch_timeout'])
-                    except (urllib2.HTTPError, urllib2.URLError) as exc:
+                        req = urllib.request.Request(url, headers=headers)
+                        resp = urllib.request.urlopen(req, timeout=self.config['origin_fetch_timeout'])
+                    except (urllib.error.HTTPError, urllib.error.URLError) as exc:
                         self.logger.error('fetching url=%s error: %s', url, exc)
                     except Exception as exc:
                         self.logger.exception('fetching url=%s failed', url)
@@ -245,7 +246,7 @@ class Server(object):
                                 try:
                                     return environ['wsgi.file_wrapper'](image, self.config['chunk_size'])
                                 except KeyError:
-                                    return iter(lambda: image.read(self.config['chunk_size']), '')
+                                    return iter(partial(image.read, self.config['chunk_size']), b'')
                         break
 
         start_response('404 Not Found', [('X-Response-Time', str(timer))])

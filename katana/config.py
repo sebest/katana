@@ -53,7 +53,7 @@ def get_config(config_file='katana.conf'):
     config_file = os.environ.get('CONFIG_FILE', config_file)
     for config_file in [config_file, '/etc/katana/katana.conf']:
         if os.path.exists(config_file):
-            execfile(config_file, {}, config)
+            exec(compile(open(config_file).read(), config_file, 'exec'), {}, config)
             break
 
     logging.config.dictConfig(config['logging'])

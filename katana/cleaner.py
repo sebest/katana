@@ -33,7 +33,7 @@ class Cleaner(object):
             for filename in filenames:
                 if filename.endswith('.META') or filename in (cleaner_db, not_found_source):
                     continue
-                path = unicode('%s/%s' % (os.path.abspath(dirpath), filename), 'utf8')
+                path = str('%s/%s' % (os.path.abspath(dirpath), filename), 'utf8')
                 accessed = int(os.path.getatime(path))
                 self.log_access(path, accessed)
 

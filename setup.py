@@ -9,7 +9,7 @@ setup(
     author_email='sebastien.estienne@gmail.com',
     url='http://github.com/sebest/katana',
     packages=['katana'],
-    scripts = ['scripts/katana',],
+    scripts=['scripts/katana'],
     install_requires=[
         'Pillow',
         'gevent',

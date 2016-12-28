@@ -7,14 +7,14 @@ import gevent
 from gevent.queue import Queue
 
 from random import sample
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 import logging
 
 
-class DefaultErrorHandler(urllib2.HTTPDefaultErrorHandler):
+class DefaultErrorHandler(urllib.request.HTTPDefaultErrorHandler):
 
     def http_error_default(self, req, fp, code, msg, headers):
-        result = urllib2.HTTPError(req.get_full_url(), code, msg, headers, fp)
+        result = urllib.error.HTTPError(req.get_full_url(), code, msg, headers, fp)
         result.status = code
         return result
 
@@ -44,10 +44,10 @@ class HttpWhoHas(object):
         self.timeout = timeout
 
         if proxy:
-            urllib2.install_opener(
-                urllib2.build_opener(urllib2.ProxyHandler({'http': proxy})))
+            urllib.request.install_opener(
+                urllib.request.build_opener(urllib.request.ProxyHandler({'http': proxy})))
 
-        urllib2.install_opener(urllib2.build_opener(DefaultErrorHandler()))
+        urllib.request.install_opener(urllib.request.build_opener(DefaultErrorHandler()))
 
         self.logger = logging.getLogger('katana.httpwhohas')
 
@@ -71,7 +71,7 @@ class HttpWhoHas(object):
     def _do_req(self, name, req, res):
         full_url = req.get_full_url()
         try:
-            resp = urllib2.urlopen(req, timeout=self.timeout)
+            resp = urllib.request.urlopen(req, timeout=self.timeout)
             status_code = resp.code
             if status_code in (200, 304) and not hasattr(req, 'redirect_dict'):
                 host = req.get_header('Host')
@@ -88,7 +88,7 @@ class HttpWhoHas(object):
             else:
                 self.logger.debug(
                     '%s url=%s returned code %d', name, full_url, status_code)
-        except (urllib2.HTTPError, urllib2.URLError) as exc:
+        except (urllib.error.HTTPError, urllib.error.URLError) as exc:
             self.logger.debug('%s url=%s error: %s', name, full_url, exc)
         except Exception as exc:
             self.logger.exception('%s url=%s got an exception', name, full_url)
@@ -121,7 +121,7 @@ class HttpWhoHas(object):
         self.logger.debug('resolving %s', filename)
         res = Queue()
         reqs = []
-        for name, info in self.clusters.items():
+        for name, info in list(self.clusters.items()):
             headers = {'User-Agent': self.user_agent}
             headers.update(info['headers'])
             if etag:
@@ -131,7 +131,7 @@ class HttpWhoHas(object):
             for ip in sample(info['ips'], info['per_cluster']):
                 self.logger.debug(
                     'looking for %s on %s with headers %s', filename, ip, headers)
-                req = urllib2.Request(
+                req = urllib.request.Request(
                     'http://%s%s' % (ip, filename), headers=headers)
                 req.get_method = lambda: 'HEAD'
                 reqs.append((name, req))
